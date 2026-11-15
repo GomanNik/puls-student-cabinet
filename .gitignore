@@ -1,0 +1,49 @@
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+_reference/
+ПУЛЬС_OGE_Tutor_выборка_кода_для_Codex.zip
+.local/
+*.log
+src/generated/
+
+# Локальное окружение
+.env
+.env.*
+!.env.example
+.local/
+.npmrc
+
+# Зависимости и сборка
+node_modules/
+.next/
+dist/
+coverage/
+.turbo/
+.pnpm-store/
+*.tsbuildinfo
+
+# Временные результаты
+playwright-report/
+test-results/
+*.log
+
+# Локальные базы и секреты
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Служебные файлы
+.DS_Store
+Thumbs.db

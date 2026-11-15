@@ -1,0 +1,6105 @@
+openapi: 3.1.0
+info:
+  title: ПУЛЬС — собственный студенческий API
+  version: 1.0.0
+  description: Публичная граница веб-клиент ↔ собственный сервер. Все сведения
+    вымышлены; реальные университетские системы не подключаются. Сервер
+    определяет студента только по cookie; учебные записи доступны только для
+    чтения.
+servers:
+  - url: /api/v1
+    description: Same-origin API сервера ПУЛЬС
+tags:
+  - name: Авторизация
+    description: Сессия текущего студента
+  - name: Главная
+    description: Сводка с частичной доступностью
+  - name: Учебный контекст
+    description: Периоды и подтверждённая принадлежность
+  - name: Расписание
+    description: План, факт и посещаемость
+  - name: Учебная деятельность
+    description: Работы, результаты и самостоятельные единицы
+  - name: Поиск
+    description: По всем подтверждённым периодам
+  - name: Материалы
+    description: Безопасные ссылки и защищённые файлы
+  - name: Заявки
+    description: Собственные заявления и справки
+  - name: Обращения
+    description: Собственные сообщения
+  - name: Уведомления
+    description: Пять категорий и прочтение
+  - name: Объявления
+    description: Полные доступные публикации
+  - name: Календарь
+    description: Единая выборка и экспорт
+  - name: Помощник
+    description: ИИ только для чтения
+security:
+  - sessionCookie: []
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Авторизация
+      operationId: loginStudent
+      summary: Войти в демонстрационный аккаунт
+      description: После успеха выдаётся новая непрозрачная серверная cookie, исходный
+        пароль не возвращается. При неверной паре — одинаковый 401 без раскрытия
+        аккаунта.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                login:
+                  type: string
+                  maxLength: 120
+                  minLength: 1
+                password:
+                  type: string
+                  maxLength: 256
+                  minLength: 1
+              additionalProperties: false
+              required:
+                - login
+                - password
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+              example:
+                data:
+                  displayName: Студент А (демо)
+                  expiresAt: '2026-11-11T21:15:00+06:00'
+                  absoluteExpiresAt: '2026-11-18T09:15:00+06:00'
+                meta:
+                  requestId: http-login-001
+          headers:
+            Set-Cookie:
+              description: __Host-puls_session=<непрозрачное значение>; Path=/; Secure;
+                HttpOnly; SameSite=Lax
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+              description: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security: []
+      x-trace-scenarios:
+        - СЦ-01
+        - СЦ-02
+        - СЦ-15
+      x-read-only-academic-data: false
+  /auth/logout:
+    post:
+      tags:
+        - Авторизация
+      operationId: logoutStudent
+      summary: Отозвать собственную сессию
+      description: Повторный выход безопасен; тело запроса отсутствует. 204 также
+        после уже завершённого выхода при корректном Origin, без раскрытия
+        сведений аккаунта.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+      responses:
+        '204':
+          description: Сессия отозвана; cookie очищена
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Удалить cookie с теми же атрибутами
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      security: []
+      x-trace-scenarios:
+        - СЦ-01
+        - СЦ-02
+        - СЦ-15
+      x-read-only-academic-data: false
+  /auth/me:
+    get:
+      tags:
+        - Авторизация
+      operationId: getSession
+      summary: Получить состояние текущей сессии
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-01
+        - СЦ-02
+        - СЦ-15
+      x-read-only-academic-data: false
+  /profile:
+    get:
+      tags:
+        - Авторизация
+      operationId: getMyProfile
+      summary: Собственный профиль студента
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-01
+        - СЦ-02
+        - СЦ-15
+      x-read-only-academic-data: false
+  /dashboard:
+    get:
+      tags:
+        - Главная
+      operationId: getDashboard
+      summary: Персональная сводка
+      description: При отказе одного источника — 200 с достоверными частями и
+        meta.sourceStatus=PARTIAL, не «всё пусто».
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-03
+        - СЦ-16
+      x-read-only-academic-data: false
+  /periods:
+    get:
+      tags:
+        - Учебный контекст
+      operationId: listPeriods
+      summary: Разрешённые учебные периоды
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeriodListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-04
+        - СЦ-06
+        - СЦ-19
+      x-read-only-academic-data: true
+  /periods/{periodId}/offerings:
+    get:
+      tags:
+        - Учебный контекст
+      operationId: listOfferings
+      summary: Список изучаемых дисциплин периода
+      description: Каждый offering подтверждён membership; официальная подгруппа
+        назначается только для этого offering.
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferingListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-04
+        - СЦ-06
+        - СЦ-19
+      x-read-only-academic-data: true
+  /periods/{periodId}/academic-units:
+    get:
+      tags:
+        - Учебный контекст
+      operationId: listAcademicUnits
+      summary: Самостоятельные учебные единицы периода
+      description: Включает самостоятельную курсовую без фиктивного offeringId.
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnitListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-04
+        - СЦ-06
+        - СЦ-19
+      x-read-only-academic-data: true
+  /periods/{periodId}/academic-units/{unitId}:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: getAcademicUnit
+      summary: Подробность самостоятельной учебной единицы
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/UnitId'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnitDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+  /schedule:
+    get:
+      tags:
+        - Расписание
+      operationId: getSchedule
+      summary: Расписание на выбранный период
+      description: Фильтрация строго по собственному назначению; предел диапазона 31
+        день. Отмена и перенос являются состояниями той же записи.
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-05
+        - СЦ-20
+      x-read-only-academic-data: true
+  /schedule/{scheduleId}:
+    get:
+      tags:
+        - Расписание
+      operationId: getScheduleEntry
+      summary: План занятия, факт и персональная посещаемость
+      description: actual и attendance — разные, независимые факты; обязательные
+        actualState/attendanceState отражают неизвестность или ошибку.
+      parameters:
+        - $ref: '#/components/parameters/ScheduleId'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-05
+        - СЦ-20
+      x-read-only-academic-data: true
+  /periods/{periodId}/offerings/{offeringId}:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: getOfferingDetail
+      summary: Подробность дисциплины в конкретном семестре
+      description: Учебная активность, выполнение и результат — самостоятельные линии.
+        Только проверенная принадлежность.
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/OfferingId'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferingDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+  /periods/{periodId}/offerings/{offeringId}/sessions:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: listOfferingSessions
+      summary: Занятия дисциплины, проведение и посещаемость
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/OfferingId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+  /periods/{periodId}/offerings/{offeringId}/works:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: listOfferingWorks
+      summary: Выданные работы дисциплины
+      description: Пагинация полных серверно разрешённых данных, а не фильтрация
+        первой загруженной страницы.
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/OfferingId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+  /periods/{periodId}/offerings/{offeringId}/works/{workId}:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: getOfferingWork
+      summary: Работа, подтверждённые этапы, выполнение и результаты
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/OfferingId'
+        - $ref: '#/components/parameters/WorkId'
+        - name: stageRef
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 240
+          description: Проверенная прямая ссылка к этапу данной работы, если этап
+            действительно существует. Чужой или неверный ID — 404.
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+  /periods/{periodId}/offerings/{offeringId}/timeline:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: getOfferingTimeline
+      summary: Хронология академической активности
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/OfferingId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+  /periods/{periodId}/offerings/{offeringId}/results:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: getOfferingResults
+      summary: Текущий контроль и официальный итог
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/OfferingId'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultsResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+  /periods/{periodId}/offerings/{offeringId}/attestations:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: listOfferingAttestations
+      summary: Планы экзаменов, зачётов и иных аттестаций
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/OfferingId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttestationsResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+  /academic/search:
+    get:
+      tags:
+        - Поиск
+      operationId: searchMyAcademics
+      summary: Серверный поиск по всем разрешённым периодам
+      description: Ищет offering и работы по полному authorised scope, включая объекты
+        вне первых страниц. PARTIAL не объявляет отсутствие совпадений.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 120
+            minLength: 2
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              example:
+                data:
+                  items:
+                    - kind: WORK
+                      title: Подготовить конспект
+                      periodId: period-2026-fall
+                      periodLabel: Осень 2026
+                      disciplineLabel: История
+                      targetRef: opaque-work-link-123
+                  completeness: COMPLETE
+                  hasMore: false
+                meta:
+                  requestId: http-search-001
+                  sourceStatus: READY
+                  completeness: true
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: "#/components/responses/RateLimited"
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-03
+        - СЦ-19
+      x-read-only-academic-data: true
+  /materials:
+    get:
+      tags:
+        - Материалы
+      operationId: listMyMaterials
+      summary: Разрешённые учебные материалы
+      description: Опциональные контексты сверяются с текущей membership,
+        произвольного URL для SSRF нет.
+      parameters:
+        - name: periodId
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 240
+          description: Если передан, ограничивает контекст подтверждённым учебным периодом.
+        - name: offeringId
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Непрозрачный идентификатор, не доказывает право доступа
+            maxLength: 240
+            minLength: 1
+        - name: unitId
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Непрозрачный идентификатор, не доказывает право доступа
+            maxLength: 240
+            minLength: 1
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-12
+        - СЦ-21
+      x-read-only-academic-data: true
+  /materials/{id}:
+    get:
+      tags:
+        - Материалы
+      operationId: getMaterial
+      summary: Подробность файла или разрешённой ссылки
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-12
+        - СЦ-21
+      x-read-only-academic-data: true
+  /materials/{id}/download:
+    get:
+      tags:
+        - Материалы
+      operationId: downloadMaterial
+      summary: Защищённая выдача файла FILE
+      description: Только FILE; байты из фиксированного доверенного хранилища,
+        произвольный Range безопасно отклоняется.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Поток только разрешённого файла после повторного ACL
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: attachment; безопасное имя UTF-8
+            Cache-Control:
+              schema:
+                type: string
+              description: private, no-store
+            Content-Length:
+              schema:
+                type: integer
+                minimum: 0
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+            Accept-Ranges:
+              description: Диапазонная загрузка отключена
+              schema:
+                type: string
+                const: none
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        '416':
+          $ref: '#/components/responses/RangeNotSupported'
+        "429":
+          $ref: "#/components/responses/RateLimited"
+      x-trace-scenarios:
+        - СЦ-12
+        - СЦ-21
+      x-read-only-academic-data: true
+    head:
+      tags:
+        - Материалы
+      operationId: headMaterial
+      summary: Метаданные разрешённого файла после ACL
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Те же проверки ACL, тело отсутствует
+          headers:
+            Content-Length:
+              schema:
+                type: integer
+                minimum: 0
+            Content-Type:
+              schema:
+                type: string
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+            Accept-Ranges:
+              description: Диапазонная загрузка отключена
+              schema:
+                type: string
+                const: none
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "413":
+          $ref: '#/components/responses/PayloadTooLarge'
+        "416":
+          $ref: '#/components/responses/RangeNotSupported'
+      x-trace-scenarios:
+        - СЦ-12
+        - СЦ-21
+      x-read-only-academic-data: true
+  /requests/types:
+    get:
+      tags:
+        - Заявки
+      operationId: listRequestTypes
+      summary: Каталог двух демонстрационных типов и схем
+      description: DEMO_CERTIFICATE и DEMO_APPLICATION, версия v1; только
+        согласованные поля и ограничения.
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestTypeListResponse'
+              example:
+                data:
+                  - requestTypeCode: DEMO_CERTIFICATE
+                    kind: CERTIFICATE
+                    displayName: Справка об обучении (демо)
+                    formSchemaVersion: v1
+                    fields:
+                      - name: copies
+                        label: Количество экземпляров
+                        kind: INTEGER
+                        required: true
+                        minimum: 1
+                        maximum: 5
+                      - name: presentationPlace
+                        label: Место предъявления
+                        kind: TEXT
+                        required: false
+                        maxLength: 160
+                      - name: comment
+                        label: Комментарий
+                        kind: LONG_TEXT
+                        required: false
+                        maxLength: 500
+                  - requestTypeCode: DEMO_APPLICATION
+                    kind: APPLICATION
+                    displayName: Общее заявление (демо)
+                    formSchemaVersion: v1
+                    fields:
+                      - name: subject
+                        label: Тема заявления
+                        kind: TEXT
+                        required: true
+                        minLength: 3
+                        maxLength: 120
+                      - name: statementBody
+                        label: Текст заявления
+                        kind: LONG_TEXT
+                        required: true
+                        minLength: 10
+                        maxLength: 3000
+                      - name: comment
+                        label: Комментарий
+                        kind: LONG_TEXT
+                        required: false
+                        maxLength: 500
+                meta:
+                  requestId: req-catalog-001
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-08
+        - СЦ-09
+        - СЦ-10
+        - СЦ-16
+      x-read-only-academic-data: false
+  /requests/types/{requestTypeCode}:
+    get:
+      tags:
+        - Заявки
+      operationId: getRequestType
+      summary: Схема выбранной формы
+      parameters:
+        - $ref: '#/components/parameters/RequestTypeCode'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestTypeDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-08
+        - СЦ-09
+        - СЦ-10
+        - СЦ-16
+      x-read-only-academic-data: false
+  /requests:
+    get:
+      tags:
+        - Заявки
+      operationId: listRequests
+      summary: Собственная история заявок
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - CERTIFICATE
+              - APPLICATION
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-08
+        - СЦ-09
+        - СЦ-10
+        - СЦ-16
+      x-read-only-academic-data: false
+    post:
+      tags:
+        - Заявки
+      operationId: createRequest
+      summary: Создать локальную заявку и поставить на передачу
+      description: Локальный commit и очередь отправки. businessStatus=null до
+        подтверждённого внешнего ACK. Формы ровно v1, неизвестные поля
+        запрещены. Одна операция/намерение с Idempotency-Key, повтор возвращает
+        тот же объект, новый результат удалённой передачи не выдумывается.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequest'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '201':
+          description: Создана локальная запись
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestDetailResponse'
+              example:
+                data:
+                  id: req-demo-001
+                  requestTypeCode: DEMO_CERTIFICATE
+                  formSchemaVersion: v1
+                  submittedData:
+                    copies: 1
+                  submittedAt: '2026-11-11T09:15:00+06:00'
+                  localState: STORED
+                  businessStatus: null
+                  externalState: PENDING
+                  transitions: []
+                meta:
+                  requestId: http-req-001
+                  sourceStatus: READY
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Относительный путь к текущей собственной заявке
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '200':
+          description: Повтор уже совершённого намерения, тот же объект
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+      x-trace-scenarios:
+        - СЦ-08
+        - СЦ-09
+        - СЦ-10
+        - СЦ-16
+      x-read-only-academic-data: false
+  /requests/{id}:
+    get:
+      tags:
+        - Заявки
+      operationId: getRequestDetail
+      summary: Подробность заявки и подтверждённые переходы
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-08
+        - СЦ-09
+        - СЦ-10
+        - СЦ-16
+      x-read-only-academic-data: false
+  /requests/{id}/status:
+    get:
+      tags:
+        - Заявки
+      operationId: getRequestStatus
+      summary: Текущее подтверждённое состояние заявки
+      description: Техническая ошибка передачи не меняет подтверждённый бизнес-статус.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestStatusResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-08
+        - СЦ-09
+        - СЦ-10
+        - СЦ-16
+      x-read-only-academic-data: false
+  /appeals:
+    get:
+      tags:
+        - Обращения
+      operationId: listAppeals
+      summary: Собственная история обращений
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppealListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-13
+        - СЦ-13А
+        - СЦ-13Б
+      x-read-only-academic-data: false
+    post:
+      tags:
+        - Обращения
+      operationId: createAppeal
+      summary: Создать обращение с первой репликой
+      description: Категории QUESTION/PROBLEM/OTHER; состояние OPEN; текст и первое
+        сообщение сохраняются атомарно без вложений. Одна операция/намерение с
+        Idempotency-Key, повтор возвращает тот же объект, новый результат
+        удалённой передачи не выдумывается.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppeal'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '201':
+          description: Создана локальная запись
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppealDetailResponse'
+          headers:
+            Location:
+              schema:
+                type: string
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '200':
+          description: Повтор одного намерения
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppealDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+      x-trace-scenarios:
+        - СЦ-13
+        - СЦ-13А
+        - СЦ-13Б
+      x-read-only-academic-data: false
+  /appeals/{id}:
+    get:
+      tags:
+        - Обращения
+      operationId: getAppealDetail
+      summary: Подробность своего обращения
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppealDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-13
+        - СЦ-13А
+        - СЦ-13Б
+      x-read-only-academic-data: false
+  /appeals/{id}/messages:
+    get:
+      tags:
+        - Обращения
+      operationId: listAppealMessages
+      summary: Хронологическая история сообщений
+      description: Первая порция — последние 30, старые страницы по курсору; внутри
+        истории порядок sequenceNumber возрастает.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          description: По умолчанию последние 30
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-13
+        - СЦ-13А
+        - СЦ-13Б
+      x-read-only-academic-data: false
+    post:
+      tags:
+        - Обращения
+      operationId: sendAppealMessage
+      summary: Сохранить и отправить новое сообщение
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewMessage'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '201':
+          description: Создана локальная запись
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageDetailResponse'
+          headers:
+            Location:
+              schema:
+                type: string
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '200':
+          description: Тот же messageId при повторе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+      description: ' Одна операция/намерение с Idempotency-Key, повтор возвращает тот
+        же объект, новый результат удалённой передачи не выдумывается.'
+      x-trace-scenarios:
+        - СЦ-13
+        - СЦ-13А
+        - СЦ-13Б
+      x-read-only-academic-data: false
+  /notifications:
+    get:
+      tags:
+        - Уведомления
+      operationId: listNotifications
+      summary: Единая лента пяти категорий
+      description: Фильтр действует на весь server-scope; partialErrors и полнота по
+        категориям в meta.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - ANNOUNCEMENT
+              - ACADEMIC_DEADLINE
+              - SCHEDULE_CHANGE
+              - APPEAL_REPLY
+              - REQUEST_STATUS
+        - name: unreadOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-10А
+        - СЦ-16
+      x-read-only-academic-data: false
+  /notifications/{notificationKey}:
+    get:
+      tags:
+        - Уведомления
+      operationId: getNotification
+      summary: Конкретное подтверждённое событие
+      description: Повторный ACL и проверка occurrence-key, не только исходного объекта.
+      parameters:
+        - $ref: '#/components/parameters/NotificationKey'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-10А
+        - СЦ-16
+      x-read-only-academic-data: false
+  /notifications/read:
+    post:
+      tags:
+        - Уведомления
+      operationId: markNotificationsRead
+      summary: Отметить выбранные собственные события прочитанными
+      description: Недоступный или чужой ключ безопасно отклоняется, состояние другой
+        учётной записи неизменно.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkReadRequest'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: "#/components/responses/RateLimited"
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-10А
+        - СЦ-16
+      x-read-only-academic-data: false
+  /notifications/read-all:
+    post:
+      tags:
+        - Уведомления
+      operationId: markAllNotificationsRead
+      summary: Прочитать все доступные уведомления аккаунта
+      description: Без тела и без фильтров; все пять категорий и все страницы.
+        COMPLETE только при полном охвате; при частичной доступности — PARTIAL с
+        перечислением категорий. Запись атомарная по проверенным событиям. Ключи
+        и category/limit/cursor в теле отсутствуют. PARTIAL при неполном любом
+        из пяти источников.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadAllResponse'
+              example:
+                data:
+                  markedCount: 8
+                  alreadyReadCount: 3
+                  completeness: PARTIAL
+                  unavailableCategories:
+                    - SCHEDULE_CHANGE
+                meta:
+                  requestId: http-readall-001
+                  sourceStatus: PARTIAL
+                  completenessByCategory:
+                    ANNOUNCEMENT: true
+                    ACADEMIC_DEADLINE: true
+                    SCHEDULE_CHANGE: false
+                    APPEAL_REPLY: true
+                    REQUEST_STATUS: true
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: "#/components/responses/RateLimited"
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-10А
+        - СЦ-16
+      x-read-only-academic-data: false
+  /announcements:
+    get:
+      tags:
+        - Объявления
+      operationId: listAnnouncements
+      summary: Список разрешённых публикаций
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-10А
+      x-read-only-academic-data: false
+  /announcements/{announcementId}:
+    get:
+      tags:
+        - Объявления
+      operationId: getAnnouncement
+      summary: Полная публикация с проверкой аудитории
+      description: Не зависит от попадания записи в первую порцию уведомлений.
+      parameters:
+        - $ref: '#/components/parameters/AnnouncementId'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-10А
+      x-read-only-academic-data: false
+  /calendar:
+    get:
+      tags:
+        - Календарь
+      operationId: getCalendar
+      summary: Единая разрешённая календарная выборка
+      description: 'eventKinds — единое UX-подмножество: UNIVERSITY и/или ACADEMIC.
+        При PARTIAL данные с meta и предупреждением, не считать список полным.'
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/EventKinds'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-11
+        - СЦ-11.1
+        - СЦ-11.2
+        - СЦ-11.3
+        - СЦ-23
+      x-read-only-academic-data: false
+  /calendar/events/{eventKey}:
+    get:
+      tags:
+        - Календарь
+      operationId: getCalendarEvent
+      summary: Конкретное событие разрешённой даты
+      description: on лишь ограничивает разрешение HMAC-ссылки, не является правом
+        доступа; academic deadline открывает исходную работу/аттестацию.
+      parameters:
+        - $ref: '#/components/parameters/EventKey'
+        - $ref: '#/components/parameters/On'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarEventResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-11
+        - СЦ-11.1
+        - СЦ-11.2
+        - СЦ-11.3
+        - СЦ-23
+      x-read-only-academic-data: false
+  /calendar/export-preview:
+    get:
+      tags:
+        - Календарь
+      operationId: previewCalendarExport
+      summary: Полный предпросмотр перед выгрузкой
+      description: 'Только полная проверенная выборка: 503 SOURCE_INCOMPLETE при
+        PARTIAL; 422 CALENDAR_SELECTION_EMPTY при полном нуле. Непрозрачный HMAC
+        selectionToken действует 5 минут.'
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/EventKinds'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarPreviewResponse'
+              example:
+                data:
+                  count: 2
+                  selectionToken: v1.kPEzT2_rQs4lJPaJEXAMPLESECURETOKEN
+                  expiresAt: '2026-11-11T09:20:00+06:00'
+                  filterSummary:
+                    from: '2026-11-11'
+                    to: '2026-11-30'
+                    eventKinds:
+                      - UNIVERSITY
+                      - ACADEMIC
+                meta:
+                  requestId: http-calendar-001
+                  sourceStatus: READY
+                  completeness: true
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/CalendarSelectionChanged'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/CalendarEmpty'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/CalendarIncomplete'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-11
+        - СЦ-11.1
+        - СЦ-11.2
+        - СЦ-11.3
+        - СЦ-23
+      x-read-only-academic-data: false
+  /calendar/export:
+    get:
+      tags:
+        - Календарь
+      operationId: exportCalendar
+      summary: Экспорт подтверждённого набора в ICS, PDF или XLSX
+      description: Проверить selectionToken, владельца, свежую ACL и полный canonical
+        digest; отличия — 409 CALENDAR_SELECTION_CHANGED, неполнота — 503
+        SOURCE_INCOMPLETE, файл не выдаётся.
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/EventKinds'
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - ics
+              - pdf
+              - xlsx
+        - name: selectionToken
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 512
+            minLength: 20
+      responses:
+        '200':
+          description: Бинарная выгрузка по повторно проверенному полному набору,
+            идентичному preview
+          headers:
+            Content-Disposition:
+              description: attachment с безопасным именем
+              schema:
+                type: string
+            Cache-Control:
+              description: private, no-store
+              schema:
+                type: string
+            Vary:
+              description: Cookie
+              schema:
+                type: string
+          content:
+            text/calendar:
+              schema:
+                type: string
+                format: binary
+              description: ICS RFC 5545, UTF-8; Content-Type также charset=utf-8
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/CalendarSelectionChanged'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/CalendarEmpty'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/CalendarIncomplete'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        "429":
+          $ref: "#/components/responses/RateLimited"
+      x-trace-scenarios:
+        - СЦ-11
+        - СЦ-11.1
+        - СЦ-11.2
+        - СЦ-11.3
+        - СЦ-23
+      x-read-only-academic-data: false
+  /operations/resolve:
+    post:
+      tags:
+        - Заявки
+      operationId: resolveOwnOperation
+      summary: Проверить результат прежней команды без повторного создания
+      description: Ни одна новая заявка/реплика не создаётся. NOT_FOUND — тот же ответ
+        для чужого/отсутствующего ключа.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveOperationRequest'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveResponse'
+              example:
+                data:
+                  state: COMMITTED
+                  operationScope: CREATE_REQUEST
+                  target:
+                    kind: REQUEST
+                    targetRef: req-demo-001
+                meta:
+                  requestId: http-resolve-001
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-trace-scenarios:
+        - СЦ-08
+        - СЦ-09
+        - СЦ-10
+        - СЦ-16
+      x-read-only-academic-data: false
+  /assistant/ask:
+    post:
+      tags:
+        - Помощник
+      operationId: askAssistant
+      summary: Задать вопрос помощнику без права изменения данных
+      description: Сервер собирает минимум своего проверенного контекста; ответ
+        ДЕМО_MOCK явно обозначен DEMO_MOCK; история не сохраняется.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantQuestion'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-14
+        - СЦ-14А
+      x-read-only-academic-data: false
+  /periods/{periodId}/academic-units/{unitId}/works/{workId}:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: getIndependentUnitWork
+      summary: Подробность учебной работы самостоятельной единицы
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/UnitId'
+        - $ref: '#/components/parameters/WorkId'
+        - name: stageRef
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 240
+          description: Проверенная прямая ссылка к этапу данной работы, если этап
+            действительно существует. Чужой или неверный ID — 404.
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkDetailResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      description: Владелец, период и принадлежность независимой единице проверяются
+        сервером; offeringId здесь отсутствует.
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+  /periods/{periodId}/academic-units/{unitId}/works:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: listIndependentUnitWorks
+      summary: Список работ самостоятельной учебной единицы с пагинацией
+      description: Без фиктивной дисциплины. Отдельная порционная выборка по
+        подтверждённому unitId.
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/UnitId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+  /periods/{periodId}/academic-units/{unitId}/timeline:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: getIndependentUnitTimeline
+      summary: Хронология подтверждённых событий самостоятельной учебной единицы
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/UnitId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineListResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+        - СЦ-07
+        - СЦ-19
+        - СЦ-20
+        - СЦ-21
+        - СЦ-22
+        - СЦ-23
+        - СЦ-24
+      x-read-only-academic-data: true
+      description: Проекция тех же выданных работ, сроков, выполнения и результатов,
+        без создания новых записей или вымышленных дат.
+components:
+  schemas:
+    ErrorDetail:
+      type: object
+      properties:
+        field:
+          type: string
+          maxLength: 160
+        issue:
+          type: string
+          maxLength: 240
+      additionalProperties: false
+      required:
+        - field
+        - issue
+    ErrorObject:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - BAD_REQUEST
+            - VALIDATION_ERROR
+            - AUTH_REQUIRED
+            - INVALID_CREDENTIALS
+            - SESSION_EXPIRED
+            - CSRF_ORIGIN_INVALID
+            - ACCESS_FORBIDDEN
+            - NOT_FOUND
+            - FORM_SCHEMA_CHANGED
+            - IDEMPOTENCY_CONFLICT
+            - SOURCE_REVISION_CHANGED
+            - SCOPE_CONFLICT
+            - CALENDAR_SELECTION_EMPTY
+            - CALENDAR_SELECTION_CHANGED
+            - SOURCE_INCOMPLETE
+            - EXTERNAL_INVALID_RESPONSE
+            - EXTERNAL_UNAVAILABLE
+            - EXTERNAL_TIMEOUT
+            - RATE_LIMITED
+            - PAYLOAD_TOO_LARGE
+            - UNSUPPORTED_MEDIA_TYPE
+            - OPERATION_UNRESOLVED
+            - MATERIAL_UNAVAILABLE
+            - INTERNAL_ERROR
+            - RANGE_NOT_SUPPORTED
+        message:
+          type: string
+          maxLength: 300
+          minLength: 1
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+          maxItems: 30
+      additionalProperties: false
+      required:
+        - code
+        - message
+    ErrorMeta:
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+      additionalProperties: false
+      required:
+        - requestId
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+        meta:
+          $ref: '#/components/schemas/ErrorMeta'
+      additionalProperties: false
+      required:
+        - error
+        - meta
+    PartialError:
+      type: object
+      properties:
+        dataset:
+          type: string
+          enum:
+            - CONTEXT
+            - SCHEDULE
+            - ACTUAL
+            - ATTENDANCE
+            - WORK
+            - STAGE
+            - ASSESSMENT
+            - ATTESTATION
+            - MATERIAL
+            - ANNOUNCEMENT
+            - CALENDAR
+            - DEADLINE
+            - REQUEST
+            - APPEAL
+            - AI
+            - NOTIFICATION
+        code:
+          type: string
+          enum:
+            - SOURCE_UNAVAILABLE
+            - SOURCE_INCOMPLETE
+            - SOURCE_INVALID
+            - SOURCE_TIMEOUT
+            - SCOPE_CONFLICT
+            - SOURCE_REVISION_CHANGED
+      additionalProperties: false
+      required:
+        - dataset
+        - code
+    ResponseMeta:
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        sourceStatus:
+          type: string
+          enum:
+            - READY
+            - PARTIAL
+            - SOURCE_ERROR
+        completeness:
+          type:
+            - boolean
+            - 'null'
+        completenessByDataset:
+          type: object
+          properties:
+            schedule:
+              type:
+                - boolean
+                - 'null'
+            actual:
+              type:
+                - boolean
+                - 'null'
+            attendance:
+              type:
+                - boolean
+                - 'null'
+            work:
+              type:
+                - boolean
+                - 'null'
+            stage:
+              type:
+                - boolean
+                - 'null'
+            assessment:
+              type:
+                - boolean
+                - 'null'
+            attestation:
+              type:
+                - boolean
+                - 'null'
+            material:
+              type:
+                - boolean
+                - 'null'
+            context:
+              type:
+                - boolean
+                - 'null'
+            announcements:
+              type:
+                - boolean
+                - 'null'
+            calendar:
+              type:
+                - boolean
+                - 'null'
+            deadlines:
+              type:
+                - boolean
+                - 'null'
+          additionalProperties: false
+        completenessByCategory:
+          type: object
+          properties:
+            ANNOUNCEMENT:
+              type:
+                - boolean
+                - 'null'
+            ACADEMIC_DEADLINE:
+              type:
+                - boolean
+                - 'null'
+            SCHEDULE_CHANGE:
+              type:
+                - boolean
+                - 'null'
+            APPEAL_REPLY:
+              type:
+                - boolean
+                - 'null'
+            REQUEST_STATUS:
+              type:
+                - boolean
+                - 'null'
+          additionalProperties: false
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        partialErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/PartialError'
+          maxItems: 30
+      additionalProperties: false
+      required:
+        - requestId
+      description: 'Строго публичный allowlist: никаких sourceCode, externalStudentId,
+        raw ExternalRef и внутренних URL.'
+    DataState:
+      type: string
+      enum:
+        - UNKNOWN
+        - NOT_APPLICABLE
+        - PENDING
+        - KNOWN_ZERO
+        - SOURCE_ERROR
+        - FORBIDDEN
+        - READY
+        - EMPTY_CONFIRMED
+      description: Семантика данных, не состояние HTTP-запроса или отправки.
+    SourceState:
+      type: string
+      enum:
+        - READY
+        - PARTIAL
+        - SOURCE_ERROR
+    Identifier:
+      type: string
+      description: Непрозрачный идентификатор, не доказывает право доступа
+      maxLength: 240
+      minLength: 1
+    DatePrecision:
+      type: string
+      enum:
+        - DATE_ONLY
+        - DATE_TIME
+    AcademicDate:
+      type: object
+      properties:
+        precision:
+          type: string
+          enum:
+            - DATE_ONLY
+            - DATE_TIME
+        'on':
+          type: string
+          format: date
+        at:
+          type: string
+          format: date-time
+        timeZone:
+          type: string
+          description: IANA zone, только если есть достоверная зона источника
+          maxLength: 100
+      additionalProperties: false
+      required:
+        - precision
+      description: При DATE_ONLY заполняется on, при DATE_TIME — at и время по ISO с
+        offset; никакого вымышленного часа.
+      oneOf:
+        - properties:
+            precision:
+              const: DATE_ONLY
+          required:
+            - precision
+            - 'on'
+          not:
+            anyOf:
+              - required:
+                  - at
+              - required:
+                  - timeZone
+        - properties:
+            precision:
+              const: DATE_TIME
+          required:
+            - precision
+            - at
+            - timeZone
+          not:
+            required:
+              - 'on'
+    Target:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - OFFERING
+            - WORK
+            - UNIT
+            - SCHEDULE
+            - REQUEST
+            - APPEAL
+            - ANNOUNCEMENT
+            - MATERIAL
+            - CALENDAR_EVENT
+            - ATTESTATION
+        targetRef:
+          type: string
+          description: Серверная непрозрачная ссылка только на разрешённый объект
+          maxLength: 240
+          minLength: 1
+      additionalProperties: false
+      required:
+        - kind
+        - targetRef
+    ListStatus:
+      type: object
+      properties:
+        dataState:
+          $ref: '#/components/schemas/DataState'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          description: Курсор, если продолжение доступно; null — конец текущей достоверной
+            выборки
+      additionalProperties: false
+      required:
+        - dataState
+        - isComplete
+        - nextCursor
+    AcademicPeriod:
+      type: object
+      properties:
+        periodId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        isCurrent:
+          type: boolean
+        startsOn:
+          type: string
+          format: date
+        endsOn:
+          type: string
+          format: date
+      additionalProperties: false
+      required:
+        - periodId
+        - label
+        - isCurrent
+    SubgroupAssignment:
+      type: object
+      properties:
+        dataState:
+          $ref: '#/components/schemas/DataState'
+        subgroupId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        label:
+          type: string
+          maxLength: 180
+        appliesToOfferingId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+      additionalProperties: false
+      required:
+        - dataState
+      description: Только официально назначенная подгруппа данной дисциплины; при
+        отсутствии подтверждения id/label отсутствуют.
+    OfferingSummary:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - OFFERING
+        offeringId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        periodId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        attestationLabel:
+          type: string
+        subgroup:
+          $ref: '#/components/schemas/SubgroupAssignment'
+        target:
+          $ref: '#/components/schemas/Target'
+      additionalProperties: false
+      required:
+        - kind
+        - offeringId
+        - periodId
+        - title
+        - subgroup
+        - target
+    IndependentUnitSummary:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - INDEPENDENT_UNIT
+        unitId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        periodId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        unitTypeLabel:
+          type: string
+        target:
+          $ref: '#/components/schemas/Target'
+      additionalProperties: false
+      required:
+        - kind
+        - unitId
+        - periodId
+        - title
+        - target
+    StudyMember:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - OFFERING
+            - INDEPENDENT_UNIT
+        offering:
+          $ref: '#/components/schemas/OfferingSummary'
+        unit:
+          $ref: '#/components/schemas/IndependentUnitSummary'
+      additionalProperties: false
+      required:
+        - kind
+      oneOf:
+        - properties:
+            kind:
+              const: OFFERING
+          required:
+            - offering
+        - properties:
+            kind:
+              const: INDEPENDENT_UNIT
+          required:
+            - unit
+    SessionAccount:
+      type: object
+      properties:
+        displayName:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        absoluteExpiresAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+        - displayName
+        - expiresAt
+        - absoluteExpiresAt
+    Profile:
+      type: object
+      properties:
+        fullName:
+          type:
+            - string
+            - "null"
+          minLength: 1
+        faculty:
+          type:
+            - string
+            - "null"
+          minLength: 1
+        studyProgram:
+          type:
+            - string
+            - "null"
+          minLength: 1
+        course:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+        group:
+          type:
+            - string
+            - "null"
+          minLength: 1
+        academicLevel:
+          type: string
+      additionalProperties: false
+      required:
+        - fullName
+        - faculty
+        - studyProgram
+        - course
+        - group
+    ScheduleChange:
+      type: object
+      properties:
+        changeKey:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        changeKind:
+          type: string
+          enum:
+            - RESCHEDULED
+            - CANCELLED
+            - UPDATED
+        description:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        revision:
+          type: string
+      additionalProperties: false
+      required:
+        - changeKey
+        - changeKind
+    ScheduleEntry:
+      type: object
+      properties:
+        scheduleId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        periodId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        offeringId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        lessonType:
+          type: string
+        plannedStart:
+          type: string
+          format: date-time
+        plannedEnd:
+          type: string
+          format: date-time
+        timeZone:
+          type: string
+        room:
+          type: string
+        teacherLabel:
+          type: string
+        status:
+          type: string
+          enum:
+            - PLANNED
+            - RESCHEDULED
+            - CANCELLED
+        change:
+          $ref: '#/components/schemas/ScheduleChange'
+        subgroupLabel:
+          type: string
+        target:
+          $ref: '#/components/schemas/Target'
+      additionalProperties: false
+      required:
+        - scheduleId
+        - periodId
+        - offeringId
+        - title
+        - status
+        - target
+      description: План занятия не доказывает проведения или посещения. Заполненные
+        времена должны иметь offset.
+    ActualSession:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        scheduleId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        held:
+          type: boolean
+        heldOn:
+          type: string
+          format: date
+        heldAt:
+          type: string
+          format: date-time
+        topic:
+          type: string
+      additionalProperties: false
+      required:
+        - sessionId
+        - scheduleId
+        - held
+    Attendance:
+      type: object
+      properties:
+        attendanceId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        actualSessionId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        status:
+          type: string
+          enum:
+            - PRESENT
+            - ABSENT
+            - OTHER_RECORDED
+        statusLabel:
+          type: string
+          minLength: 1
+        recordedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+        - attendanceId
+        - actualSessionId
+        - status
+        - statusLabel
+      description: Только официальный персональный факт; отсутствующий объект не
+        означает пропуск.
+    ScheduleDetail:
+      type: object
+      properties:
+        schedule:
+          $ref: '#/components/schemas/ScheduleEntry'
+        actual:
+          $ref: '#/components/schemas/ActualSession'
+        actualState:
+          $ref: '#/components/schemas/DataState'
+        attendance:
+          $ref: '#/components/schemas/Attendance'
+        attendanceState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - schedule
+        - actualState
+        - attendanceState
+    WorkProgress:
+      type: object
+      properties:
+        dataState:
+          $ref: '#/components/schemas/DataState'
+        assignmentStatusCode:
+          type: string
+        completionStatusCode:
+          type: string
+        submissionStatusCode:
+          type: string
+        reviewStatusCode:
+          type: string
+        completedAt:
+          type: string
+          format: date-time
+        submittedAt:
+          type: string
+          format: date-time
+        reviewedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+        - dataState
+      description: Независимые коды; отсутствие submissionStatusCode не означает «не сдал».
+    Stage:
+      type: object
+      properties:
+        stageId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        displayOrder:
+          type: integer
+          minimum: 0
+        due:
+          $ref: '#/components/schemas/AcademicDate'
+        progress:
+          $ref: '#/components/schemas/WorkProgress'
+      additionalProperties: false
+      required:
+        - stageId
+        - title
+    AssessmentValue:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - NUMERIC
+            - TEXT
+            - CODE
+        numeric:
+          type: string
+          description: Точная десятичная строка, включая подтверждённый 0
+          pattern: ^-?\d+(?:\.\d+)?$
+        text:
+          type: string
+        code:
+          type: string
+        rawValueText:
+          type: string
+      additionalProperties: false
+      required:
+        - kind
+      oneOf:
+        - properties:
+            kind:
+              const: NUMERIC
+          required:
+            - kind
+            - numeric
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - code
+        - properties:
+            kind:
+              const: TEXT
+          required:
+            - kind
+            - text
+          not:
+            anyOf:
+              - required:
+                  - numeric
+              - required:
+                  - code
+        - properties:
+            kind:
+              const: CODE
+          required:
+            - kind
+            - code
+          not:
+            anyOf:
+              - required:
+                  - numeric
+              - required:
+                  - text
+    WorkResult:
+      type: object
+      properties:
+        resultId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        stageId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        value:
+          $ref: '#/components/schemas/AssessmentValue'
+        assessedAt:
+          type: string
+          format: date-time
+        label:
+          type: string
+      additionalProperties: false
+      required:
+        - resultId
+        - value
+    WorkSummary:
+      type: object
+      properties:
+        workId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        periodId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        offeringId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        unitId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        workTypeLabel:
+          type: string
+          minLength: 1
+        issued:
+          $ref: '#/components/schemas/AcademicDate'
+        due:
+          $ref: '#/components/schemas/AcademicDate'
+        progress:
+          $ref: '#/components/schemas/WorkProgress'
+        target:
+          $ref: '#/components/schemas/Target'
+      additionalProperties: false
+      required:
+        - workId
+        - periodId
+        - title
+        - workTypeLabel
+        - target
+      description: Ровно один первичный контекст — offeringId или unitId.
+      oneOf:
+        - required:
+            - offeringId
+          not:
+            required:
+              - unitId
+        - required:
+            - unitId
+          not:
+            required:
+              - offeringId
+    WorkDetail:
+      type: object
+      properties:
+        work:
+          $ref: '#/components/schemas/WorkSummary'
+        description:
+          type: string
+        topic:
+          type: string
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Stage'
+        stagesState:
+          $ref: '#/components/schemas/ListStatus'
+        progress:
+          $ref: '#/components/schemas/WorkProgress'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkResult'
+        resultsState:
+          $ref: '#/components/schemas/ListStatus'
+        relatedMaterials:
+          type: array
+          items:
+            $ref: '#/components/schemas/Material'
+        materialsState:
+          $ref: '#/components/schemas/ListStatus'
+        focusStageId:
+          type: string
+          minLength: 1
+          maxLength: 240
+          description: Если был задан stageRef, сервер подтверждает принадлежность этапа и
+            передаёт ID для фокусировки в UI.
+      additionalProperties: false
+      required:
+        - work
+        - stages
+        - stagesState
+        - progress
+        - results
+        - resultsState
+        - relatedMaterials
+        - materialsState
+    AssessmentComponent:
+      type: object
+      properties:
+        componentId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        value:
+          $ref: '#/components/schemas/AssessmentValue'
+        weightText:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Вес в исходном обозначении источника, без пересчёта в проценты.
+        maxValue:
+          type: string
+          pattern: ^\d+(?:\.\d+)?$
+        state:
+          $ref: '#/components/schemas/DataState'
+        assessedAt:
+          type: string
+          format: date-time
+        linkedWorkId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+      additionalProperties: false
+      required:
+        - componentId
+        - label
+        - state
+    OfficialCourseResult:
+      type: object
+      properties:
+        resultId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        value:
+          $ref: '#/components/schemas/AssessmentValue'
+        assessedAt:
+          type: string
+          format: date-time
+        attestationId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        state:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - resultId
+        - label
+        - state
+    Attestation:
+      type: object
+      properties:
+        attestationId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        kindLabel:
+          type: string
+          minLength: 1
+        planned:
+          $ref: '#/components/schemas/AcademicDate'
+        location:
+          type: string
+        state:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - attestationId
+        - kindLabel
+        - state
+    ResultsView:
+      type: object
+      properties:
+        gradingModelLabel:
+          type: string
+        gradingState:
+          $ref: '#/components/schemas/DataState'
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentComponent'
+        componentsState:
+          $ref: '#/components/schemas/ListStatus'
+        attestations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attestation'
+        attestationsState:
+          $ref: '#/components/schemas/ListStatus'
+        officialResult:
+          $ref: '#/components/schemas/OfficialCourseResult'
+        officialResultState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - gradingState
+        - components
+        - componentsState
+        - attestations
+        - attestationsState
+        - officialResultState
+      description: Никаких вычисляемых допусков, процентов, среднего балла и итоговой
+        оценки.
+    TimelineEntry:
+      type: object
+      properties:
+        timelineKey:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        eventKind:
+          type: string
+          enum:
+            - ISSUED
+            - DUE
+            - COMPLETED
+            - SUBMITTED
+            - ASSESSED
+            - REVIEWED
+            - ACTUAL
+            - ATTESTATION
+            - PLANNED
+        when:
+          $ref: '#/components/schemas/AcademicDate'
+        title:
+          type: string
+          minLength: 1
+        target:
+          $ref: '#/components/schemas/Target'
+      additionalProperties: false
+      required:
+        - timelineKey
+        - eventKind
+        - when
+        - title
+        - target
+    OfferingDetail:
+      type: object
+      properties:
+        offering:
+          $ref: '#/components/schemas/OfferingSummary'
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleDetail'
+        sessionsState:
+          $ref: '#/components/schemas/ListStatus'
+        works:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkSummary'
+        worksState:
+          $ref: '#/components/schemas/ListStatus'
+        results:
+          $ref: '#/components/schemas/ResultsView'
+        materials:
+          type: array
+          items:
+            $ref: '#/components/schemas/Material'
+        materialsState:
+          $ref: '#/components/schemas/ListStatus'
+        progressLines:
+          type: object
+          properties:
+            activity:
+              $ref: '#/components/schemas/DataState'
+            completion:
+              $ref: '#/components/schemas/DataState'
+            results:
+              $ref: '#/components/schemas/DataState'
+          additionalProperties: false
+          required:
+            - activity
+            - completion
+            - results
+      additionalProperties: false
+      required:
+        - offering
+        - sessions
+        - sessionsState
+        - works
+        - worksState
+        - results
+        - materials
+        - materialsState
+        - progressLines
+      description: Композитный краткий срез; детальные списки и пагинация доступны
+        отдельными GET.
+    IndependentUnitDetail:
+      type: object
+      properties:
+        unit:
+          $ref: '#/components/schemas/IndependentUnitSummary'
+        works:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkDetail'
+        worksState:
+          $ref: '#/components/schemas/ListStatus'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkResult'
+        materials:
+          type: array
+          items:
+            $ref: '#/components/schemas/Material'
+        attestations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attestation'
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEntry'
+        timelineState:
+          $ref: '#/components/schemas/ListStatus'
+      additionalProperties: false
+      required:
+        - unit
+        - works
+        - worksState
+        - results
+        - materials
+        - attestations
+        - timeline
+        - timelineState
+      description: Без искусственного offeringId для самостоятельной курсовой.
+    Material:
+      type: object
+      properties:
+        materialId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        kind:
+          type: string
+          enum:
+            - FILE
+            - LINK
+        mimeType:
+          type: string
+        sizeBytes:
+          type: integer
+          minimum: 0
+        offeringId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        unitId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        relatedWorkIds:
+          type: array
+          items:
+            type: string
+            description: Непрозрачный идентификатор, не доказывает право доступа
+            maxLength: 240
+            minLength: 1
+        relatedScheduleIds:
+          type: array
+          items:
+            type: string
+            description: Непрозрачный идентификатор, не доказывает право доступа
+            maxLength: 240
+            minLength: 1
+        safeExternalUrl:
+          type: string
+          format: uri
+          pattern: ^https://
+          description: HTTPS-ссылка, уже проверенная сервером по разрешённым доменам
+            источника. При FILE отсутствует.
+        downloadTarget:
+          $ref: '#/components/schemas/Target'
+      additionalProperties: false
+      required:
+        - materialId
+        - title
+        - kind
+      description: Подтверждённые связи, не совпадение названий; FILE без постоянного
+        внутреннего URL.
+      allOf:
+        - if:
+            properties:
+              kind:
+                const: FILE
+            required:
+              - kind
+          then:
+            not:
+              required:
+                - safeExternalUrl
+        - if:
+            properties:
+              kind:
+                const: LINK
+            required:
+              - kind
+          then:
+            not:
+              required:
+                - downloadTarget
+    AcademicSearchResult:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - OFFERING
+            - WORK
+        title:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        periodLabel:
+          type: string
+          minLength: 1
+        disciplineLabel:
+          type: string
+        targetRef:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+      additionalProperties: false
+      required:
+        - kind
+        - title
+        - periodId
+        - periodLabel
+        - targetRef
+    AcademicSearchView:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcademicSearchResult'
+          maxItems: 10
+        completeness:
+          type: string
+          enum:
+            - COMPLETE
+            - PARTIAL
+        hasMore:
+          type: boolean
+      additionalProperties: false
+      required:
+        - items
+        - completeness
+        - hasMore
+    Announcement:
+      type: object
+      properties:
+        announcementId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        body:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        authorLabel:
+          type: string
+        validUntil:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+        - announcementId
+        - title
+    Notification:
+      type: object
+      properties:
+        notificationKey:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        category:
+          type: string
+          enum:
+            - ANNOUNCEMENT
+            - ACADEMIC_DEADLINE
+            - SCHEDULE_CHANGE
+            - APPEAL_REPLY
+            - REQUEST_STATUS
+        title:
+          type: string
+          minLength: 1
+        bodyPreview:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        isRead:
+          type: boolean
+        target:
+          $ref: '#/components/schemas/Target'
+      additionalProperties: false
+      required:
+        - notificationKey
+        - category
+        - title
+        - isRead
+      description: Ключ конкретного возникновения события, а не только исходной
+        заявки/обращения.
+    ReadResult:
+      type: object
+      properties:
+        markedCount:
+          type: integer
+          minimum: 0
+        alreadyReadCount:
+          type: integer
+          minimum: 0
+      additionalProperties: false
+      required:
+        - markedCount
+        - alreadyReadCount
+    ReadAllResult:
+      type: object
+      properties:
+        markedCount:
+          type: integer
+          minimum: 0
+        alreadyReadCount:
+          type: integer
+          minimum: 0
+        completeness:
+          type: string
+          enum:
+            - COMPLETE
+            - PARTIAL
+        unavailableCategories:
+          type: array
+          items:
+            type: string
+            enum:
+              - ANNOUNCEMENT
+              - ACADEMIC_DEADLINE
+              - SCHEDULE_CHANGE
+              - APPEAL_REPLY
+              - REQUEST_STATUS
+      additionalProperties: false
+      required:
+        - markedCount
+        - alreadyReadCount
+        - completeness
+        - unavailableCategories
+    DateTimeView:
+      $ref: '#/components/schemas/AcademicDate'
+    CalendarItem:
+      type: object
+      properties:
+        eventKey:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        origin:
+          type: string
+          enum:
+            - UNIVERSITY_EVENT
+            - ACADEMIC_DEADLINE
+            - ATTESTATION
+        title:
+          type: string
+          minLength: 1
+        starts:
+          $ref: '#/components/schemas/AcademicDate'
+        ends:
+          $ref: '#/components/schemas/AcademicDate'
+        location:
+          type: string
+        target:
+          $ref: '#/components/schemas/Target'
+        description:
+          type: string
+      additionalProperties: false
+      required:
+        - eventKey
+        - origin
+        - title
+        - starts
+      description: Дата без часа остаётся DATE_ONLY, даже если ICS покажет целый день.
+    CalendarSelectionPreview:
+      type: object
+      properties:
+        count:
+          type: integer
+          minimum: 1
+        selectionToken:
+          type: string
+          maxLength: 512
+          minLength: 20
+        expiresAt:
+          type: string
+          format: date-time
+        filterSummary:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+            eventKinds:
+              type: array
+              items:
+                type: string
+                enum:
+                  - UNIVERSITY
+                  - ACADEMIC
+              minItems: 1
+              maxItems: 2
+              uniqueItems: true
+          additionalProperties: false
+          required:
+            - from
+            - to
+            - eventKinds
+      additionalProperties: false
+      required:
+        - count
+        - selectionToken
+        - expiresAt
+        - filterSummary
+    DashboardView:
+      type: object
+      properties:
+        nextClasses:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleEntry'
+        upcomingWorks:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkSummary'
+        announcements:
+          type: array
+          items:
+            $ref: '#/components/schemas/Announcement'
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        materials:
+          type: array
+          items:
+            $ref: '#/components/schemas/Material'
+        calendarHighlights:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarItem'
+        upcomingDeadlines:
+          type: array
+          description: Единая проекция подтверждённых сроков работ, этапов и аттестаций за
+            ближайшие 14 дней
+          items:
+            $ref: "#/components/schemas/CalendarItem"
+      additionalProperties: false
+      required:
+        - nextClasses
+        - upcomingWorks
+        - announcements
+        - notifications
+        - materials
+        - calendarHighlights
+        - upcomingDeadlines
+      description: Только короткие сводки. У каждого источника свой флаг полноты в meta.
+    RequestType:
+      oneOf:
+        - type: object
+          properties:
+            requestTypeCode:
+              const: DEMO_CERTIFICATE
+            kind:
+              const: CERTIFICATE
+            displayName:
+              const: Справка об обучении (демо)
+            formSchemaVersion:
+              const: v1
+            fields:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                oneOf:
+                  - type: object
+                    properties:
+                      name:
+                        const: copies
+                      label:
+                        type: string
+                        minLength: 1
+                      kind:
+                        const: INTEGER
+                      required:
+                        const: true
+                      minimum:
+                        const: 1
+                      maximum:
+                        const: 5
+                    additionalProperties: false
+                    required:
+                      - name
+                      - label
+                      - kind
+                      - required
+                      - minimum
+                      - maximum
+                  - type: object
+                    properties:
+                      name:
+                        const: presentationPlace
+                      label:
+                        type: string
+                        minLength: 1
+                      kind:
+                        const: TEXT
+                      required:
+                        const: false
+                      maxLength:
+                        const: 160
+                    additionalProperties: false
+                    required:
+                      - name
+                      - label
+                      - kind
+                      - required
+                      - maxLength
+                  - type: object
+                    properties:
+                      name:
+                        const: comment
+                      label:
+                        type: string
+                        minLength: 1
+                      kind:
+                        const: LONG_TEXT
+                      required:
+                        const: false
+                      maxLength:
+                        const: 500
+                    additionalProperties: false
+                    required:
+                      - name
+                      - label
+                      - kind
+                      - required
+                      - maxLength
+              allOf:
+                - contains:
+                    type: object
+                    properties:
+                      name:
+                        const: copies
+                    required:
+                      - name
+                  minContains: 1
+                  maxContains: 1
+                - contains:
+                    type: object
+                    properties:
+                      name:
+                        const: presentationPlace
+                    required:
+                      - name
+                  minContains: 1
+                  maxContains: 1
+                - contains:
+                    type: object
+                    properties:
+                      name:
+                        const: comment
+                    required:
+                      - name
+                  minContains: 1
+                  maxContains: 1
+          additionalProperties: false
+          required:
+            - requestTypeCode
+            - kind
+            - displayName
+            - formSchemaVersion
+            - fields
+        - type: object
+          properties:
+            requestTypeCode:
+              const: DEMO_APPLICATION
+            kind:
+              const: APPLICATION
+            displayName:
+              const: Общее заявление (демо)
+            formSchemaVersion:
+              const: v1
+            fields:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                oneOf:
+                  - type: object
+                    properties:
+                      name:
+                        const: subject
+                      label:
+                        type: string
+                        minLength: 1
+                      kind:
+                        const: TEXT
+                      required:
+                        const: true
+                      minLength:
+                        const: 3
+                      maxLength:
+                        const: 120
+                    additionalProperties: false
+                    required:
+                      - name
+                      - label
+                      - kind
+                      - required
+                      - minLength
+                      - maxLength
+                  - type: object
+                    properties:
+                      name:
+                        const: statementBody
+                      label:
+                        type: string
+                        minLength: 1
+                      kind:
+                        const: LONG_TEXT
+                      required:
+                        const: true
+                      minLength:
+                        const: 10
+                      maxLength:
+                        const: 3000
+                    additionalProperties: false
+                    required:
+                      - name
+                      - label
+                      - kind
+                      - required
+                      - minLength
+                      - maxLength
+                  - type: object
+                    properties:
+                      name:
+                        const: comment
+                      label:
+                        type: string
+                        minLength: 1
+                      kind:
+                        const: LONG_TEXT
+                      required:
+                        const: false
+                      maxLength:
+                        const: 500
+                    additionalProperties: false
+                    required:
+                      - name
+                      - label
+                      - kind
+                      - required
+                      - maxLength
+              allOf:
+                - contains:
+                    type: object
+                    properties:
+                      name:
+                        const: subject
+                    required:
+                      - name
+                  minContains: 1
+                  maxContains: 1
+                - contains:
+                    type: object
+                    properties:
+                      name:
+                        const: statementBody
+                    required:
+                      - name
+                  minContains: 1
+                  maxContains: 1
+                - contains:
+                    type: object
+                    properties:
+                      name:
+                        const: comment
+                    required:
+                      - name
+                  minContains: 1
+                  maxContains: 1
+          additionalProperties: false
+          required:
+            - requestTypeCode
+            - kind
+            - displayName
+            - formSchemaVersion
+            - fields
+    CertificateData:
+      type: object
+      properties:
+        copies:
+          type: integer
+          minimum: 1
+          maximum: 5
+        presentationPlace:
+          type: string
+          maxLength: 160
+        comment:
+          type: string
+          maxLength: 500
+      additionalProperties: false
+      required:
+        - copies
+    ApplicationData:
+      type: object
+      properties:
+        subject:
+          type: string
+          maxLength: 120
+          minLength: 3
+        statementBody:
+          type: string
+          maxLength: 3000
+          minLength: 10
+        comment:
+          type: string
+          maxLength: 500
+      additionalProperties: false
+      required:
+        - subject
+        - statementBody
+    CreateRequest:
+      oneOf:
+        - type: object
+          properties:
+            requestTypeCode:
+              const: DEMO_CERTIFICATE
+            formSchemaVersion:
+              const: v1
+            submittedData:
+              $ref: '#/components/schemas/CertificateData'
+          additionalProperties: false
+          required:
+            - requestTypeCode
+            - formSchemaVersion
+            - submittedData
+        - type: object
+          properties:
+            requestTypeCode:
+              const: DEMO_APPLICATION
+            formSchemaVersion:
+              const: v1
+            submittedData:
+              $ref: '#/components/schemas/ApplicationData'
+          additionalProperties: false
+          required:
+            - requestTypeCode
+            - formSchemaVersion
+            - submittedData
+    RequestTransition:
+      type: object
+      properties:
+        transitionId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        businessStatus:
+          type: string
+          enum:
+            - SUBMITTED
+            - IN_PROGRESS
+            - READY
+            - REJECTED
+        occurredAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+      additionalProperties: false
+      required:
+        - transitionId
+        - businessStatus
+        - occurredAt
+    StudentRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        requestTypeCode:
+          type: string
+          enum:
+            - DEMO_CERTIFICATE
+            - DEMO_APPLICATION
+        formSchemaVersion:
+          type: string
+          enum:
+            - v1
+        submittedData:
+          oneOf:
+            - $ref: '#/components/schemas/CertificateData'
+            - $ref: '#/components/schemas/ApplicationData'
+        submittedAt:
+          type: string
+          format: date-time
+        localState:
+          type: string
+          enum:
+            - STORED
+        businessStatus:
+          type:
+            - string
+            - 'null'
+          enum:
+            - SUBMITTED
+            - IN_PROGRESS
+            - READY
+            - REJECTED
+            - null
+        externalState:
+          type: string
+          enum:
+            - PENDING
+            - SENDING
+            - ACKNOWLEDGED
+            - UNKNOWN
+            - RETRYABLE_ERROR
+            - PERMANENT_TECHNICAL_ERROR
+        statusInfo:
+          type: string
+        transitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequestTransition'
+      additionalProperties: false
+      required:
+        - id
+        - requestTypeCode
+        - formSchemaVersion
+        - submittedData
+        - submittedAt
+        - localState
+        - businessStatus
+        - externalState
+        - transitions
+      description: businessStatus null до внешнего ACK, при ошибке транспорта не REJECTED.
+      allOf:
+        - if:
+            properties:
+              requestTypeCode:
+                const: DEMO_CERTIFICATE
+            required:
+              - requestTypeCode
+          then:
+            properties:
+              submittedData:
+                $ref: '#/components/schemas/CertificateData'
+        - if:
+            properties:
+              requestTypeCode:
+                const: DEMO_APPLICATION
+            required:
+              - requestTypeCode
+          then:
+            properties:
+              submittedData:
+                $ref: '#/components/schemas/ApplicationData'
+    CreateAppeal:
+      type: object
+      properties:
+        categoryCode:
+          type: string
+          enum:
+            - QUESTION
+            - PROBLEM
+            - OTHER
+        subject:
+          type: string
+          maxLength: 120
+          minLength: 3
+        firstMessage:
+          type: string
+          maxLength: 3000
+          minLength: 10
+      additionalProperties: false
+      required:
+        - categoryCode
+        - subject
+        - firstMessage
+    Appeal:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        categoryCode:
+          type: string
+          enum:
+            - QUESTION
+            - PROBLEM
+            - OTHER
+        subject:
+          type: string
+          minLength: 1
+        status:
+          const: OPEN
+        createdAt:
+          type: string
+          format: date-time
+        externalState:
+          type: string
+          enum:
+            - PENDING
+            - SENDING
+            - ACKNOWLEDGED
+            - UNKNOWN
+            - RETRYABLE_ERROR
+            - PERMANENT_TECHNICAL_ERROR
+        lastMessageAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+        - id
+        - categoryCode
+        - subject
+        - status
+        - createdAt
+        - externalState
+    Message:
+      type: object
+      properties:
+        messageId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        appealId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        sequenceNumber:
+          type: integer
+          minimum: 1
+        senderKind:
+          type: string
+          enum:
+            - STUDENT
+            - EXTERNAL_PARTY
+        senderLabel:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          minLength: 1
+        createdAt:
+          type: string
+          format: date-time
+        sourceCreatedAt:
+          type: string
+          format: date-time
+        deliveryState:
+          type: string
+          enum:
+            - PENDING
+            - SENDING
+            - ACKNOWLEDGED
+            - UNKNOWN
+            - RETRYABLE_ERROR
+            - PERMANENT_TECHNICAL_ERROR
+      additionalProperties: false
+      required:
+        - messageId
+        - appealId
+        - sequenceNumber
+        - senderKind
+        - senderLabel
+        - body
+        - createdAt
+      description: EXTERNAL_PARTY показывается как «Деканат (демо-ответ)»; порядок по
+        sequenceNumber.
+    AppealDetail:
+      type: object
+      properties:
+        appeal:
+          $ref: '#/components/schemas/Appeal'
+        recentMessages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        messagesPage:
+          $ref: '#/components/schemas/ListStatus'
+      additionalProperties: false
+      required:
+        - appeal
+        - recentMessages
+        - messagesPage
+    NewMessage:
+      type: object
+      properties:
+        body:
+          type: string
+          maxLength: 3000
+          minLength: 1
+      additionalProperties: false
+      required:
+        - body
+    ResolveOperationRequest:
+      type: object
+      properties:
+        operationScope:
+          type: string
+          enum:
+            - CREATE_REQUEST
+            - CREATE_APPEAL
+            - CREATE_APPEAL_MESSAGE
+        idempotencyKey:
+          type: string
+          format: uuid
+      additionalProperties: false
+      required:
+        - operationScope
+        - idempotencyKey
+    ResolveOperationResult:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+            - COMMITTED
+            - PENDING
+            - NOT_FOUND
+            - EXPIRED
+        target:
+          $ref: '#/components/schemas/Target'
+        operationScope:
+          type: string
+          enum:
+            - CREATE_REQUEST
+            - CREATE_APPEAL
+            - CREATE_APPEAL_MESSAGE
+      additionalProperties: false
+      required:
+        - state
+        - operationScope
+      description: NOT_FOUND не доказывает отсутствие операции после истечения
+        хранения ключа.
+    AssistantQuestion:
+      type: object
+      properties:
+        message:
+          type: string
+          maxLength: 4000
+          minLength: 1
+        contextHint:
+          type: string
+          enum:
+            - GENERAL
+            - SCHEDULE
+            - STUDY
+            - DEADLINES
+            - MATERIALS
+            - REQUESTS
+            - APPEALS
+            - CALENDAR
+            - NOTIFICATIONS
+      additionalProperties: false
+      required:
+        - message
+    AssistantAnswer:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 1
+        providerMode:
+          type: string
+          enum:
+            - GIGACHAT
+            - DEMO_MOCK
+        completeness:
+          type: string
+          enum:
+            - COMPLETE
+            - PARTIAL
+            - UNKNOWN
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Target'
+          maxItems: 10
+        notice:
+          type: string
+      additionalProperties: false
+      required:
+        - text
+        - providerMode
+        - completeness
+        - targets
+      description: Нет изменяющих команд и постоянного чата.
+    PeriodPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcademicPeriod'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    OfferingPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfferingSummary'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    AcademicUnitPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndependentUnitSummary'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    SchedulePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleEntry'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    WorkPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkSummary'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    SessionPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleDetail'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    TimelinePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEntry'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    MaterialPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Material'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    RequestPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentRequest'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    AppealPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Appeal'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    MessagePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    NotificationPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    AnnouncementPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Announcement'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    AttestationPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attestation'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    CalendarPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarItem'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        isComplete:
+          type:
+            - boolean
+            - 'null'
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - isComplete
+        - dataState
+    SessionResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/SessionAccount'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    ProfileResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Profile'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    DashboardResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/DashboardView'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    PeriodListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/PeriodPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    OfferingListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/OfferingPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    UnitListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AcademicUnitPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    UnitDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/IndependentUnitDetail'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    OfferingDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/OfferingDetail'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    ScheduleListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/SchedulePage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    ScheduleDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ScheduleDetail'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    SessionListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/SessionPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    WorkListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/WorkPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    WorkDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/WorkDetail'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    TimelineListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/TimelinePage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    MaterialListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/MaterialPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    MaterialDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Material'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    ResultsResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ResultsView'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    AttestationsResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AttestationPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    SearchResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AcademicSearchView'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    RequestTypeListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequestType'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    RequestListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RequestPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    RequestDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/StudentRequest'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    AppealListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AppealPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    AppealDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AppealDetail'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    MessageListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/MessagePage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    MessageDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Message'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    NotificationListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    NotificationDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Notification'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    ReadResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ReadResult'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    ReadAllResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ReadAllResult'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    AnnouncementListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AnnouncementPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    AnnouncementDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Announcement'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    CalendarListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CalendarPage'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    CalendarEventResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CalendarItem'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    CalendarPreviewResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CalendarSelectionPreview'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    ResolveResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ResolveOperationResult'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    AssistantResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AssistantAnswer'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    RequestTypeDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RequestType'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    RequestStatus:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+        businessStatus:
+          type:
+            - string
+            - 'null'
+          enum:
+            - SUBMITTED
+            - IN_PROGRESS
+            - READY
+            - REJECTED
+            - null
+        externalState:
+          type: string
+          enum:
+            - PENDING
+            - SENDING
+            - ACKNOWLEDGED
+            - UNKNOWN
+            - RETRYABLE_ERROR
+            - PERMANENT_TECHNICAL_ERROR
+        transitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequestTransition'
+      additionalProperties: false
+      required:
+        - id
+        - businessStatus
+        - externalState
+        - transitions
+    RequestStatusResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RequestStatus'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    MarkReadRequest:
+      type: object
+      properties:
+        notificationKeys:
+          type: array
+          items:
+            type: string
+            description: Непрозрачный идентификатор, не доказывает право доступа
+            maxLength: 240
+            minLength: 1
+          minItems: 1
+          maxItems: 50
+      additionalProperties: false
+      required:
+        - notificationKeys
+  parameters:
+    PeriodId:
+      name: periodId
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Непрозрачный идентификатор, не доказывает право доступа
+        maxLength: 240
+        minLength: 1
+    OfferingId:
+      name: offeringId
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Непрозрачный идентификатор, не доказывает право доступа
+        maxLength: 240
+        minLength: 1
+    UnitId:
+      name: unitId
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Непрозрачный идентификатор, не доказывает право доступа
+        maxLength: 240
+        minLength: 1
+    WorkId:
+      name: workId
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Непрозрачный идентификатор, не доказывает право доступа
+        maxLength: 240
+        minLength: 1
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Непрозрачный идентификатор, не доказывает право доступа
+        maxLength: 240
+        minLength: 1
+    ScheduleId:
+      name: scheduleId
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Непрозрачный идентификатор, не доказывает право доступа
+        maxLength: 240
+        minLength: 1
+    AnnouncementId:
+      name: announcementId
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Непрозрачный идентификатор, не доказывает право доступа
+        maxLength: 240
+        minLength: 1
+    EventKey:
+      name: eventKey
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Непрозрачный идентификатор, не доказывает право доступа
+        maxLength: 240
+        minLength: 1
+    NotificationKey:
+      name: notificationKey
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Непрозрачный идентификатор, не доказывает право доступа
+        maxLength: 240
+        minLength: 1
+    From:
+      name: from
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+      description: Начало диапазона (включительно), по локальной дате источника
+    To:
+      name: to
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+      description: Конец диапазона (включительно); в календаре не более 366 дней
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+      description: Количество записей, по умолчанию 20 (сообщения — 30)
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 2048
+        minLength: 1
+      description: Непрозрачный HMAC-курсор, связан с аккаунтом и фильтрами
+    Origin:
+      name: Origin
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uri
+      description: Обязательный точный Origin собственного приложения для всех
+        изменяющих HTTP-операций
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID v4 одного намерения, срок удержания 24 часа
+    EventKinds:
+      name: eventKinds
+      in: query
+      required: true
+      schema:
+        type: string
+        enum:
+          - UNIVERSITY
+          - ACADEMIC
+          - UNIVERSITY,ACADEMIC
+          - ACADEMIC,UNIVERSITY
+      description: 'Непустой набор без повторов: UNIVERSITY, ACADEMIC, порядок
+        канонизируется'
+    'On':
+      name: 'on'
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+      description: Календарная дата для безопасного разрешения eventKey
+    RequestTypeCode:
+      name: requestTypeCode
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+          - DEMO_CERTIFICATE
+          - DEMO_APPLICATION
+  responses:
+    UnsupportedMediaType:
+      description: 415 — команда с JSON-body требует Content-Type application/json
+        (допускается charset=utf-8); при ином типе никаких изменений не
+        выполнять
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNSUPPORTED_MEDIA_TYPE
+              message: Неподдерживаемый тип содержимого. Отправьте JSON.
+            meta:
+              requestId: req-media-type
+      headers:
+        Cache-Control:
+          description: Персональные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    BadRequest:
+      description: 400 — синтаксис запроса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: BAD_REQUEST
+              message: Некорректный запрос.
+            meta:
+              requestId: req-demo-1
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    Unauthorized:
+      description: 401 — нет действующей сессии
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    Forbidden:
+      description: 403 — действие запрещено или неверный Origin
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    NotFound:
+      description: 404 — объект не найден либо недоступен этому аккаунту
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    Conflict:
+      description: 409 — конфликт ревизии, идемпотентности или выбранного набора
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    PayloadTooLarge:
+      description: 413 — превышено ограничение объёма
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    Unprocessable:
+      description: 422 — некорректные поля, диапазон или пустая выборка
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Проверьте введённые данные.
+              details:
+                - field: subject
+                  issue: Длина от 3 до 120 символов.
+            meta:
+              requestId: req-demo-2
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    RateLimited:
+      description: 429 — превышено ограничение частоты
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        Retry-After:
+          description: Число секунд до следующей попытки
+          schema:
+            type: string
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    BadGateway:
+      description: 502 — источник вернул недостоверные данные
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    Unavailable:
+      description: 503 — источник недоступен или выбранный набор неполон
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    Timeout:
+      description: 504 — тайм-аут тестового источника
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    CalendarSelectionChanged:
+      description: 409 — изменился/истёк выбор или selectionToken не соответствует
+        текущей проверенной выборке
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: CALENDAR_SELECTION_CHANGED
+              message: Набор событий изменился. Повторите предпросмотр.
+            meta:
+              requestId: req-calendar-409
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    CalendarIncomplete:
+      description: 503 — неполная выборка выбранных категорий; файл не формируется
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: SOURCE_INCOMPLETE
+              message: Не все календарные события доступны. Повторите попытку позже.
+            meta:
+              requestId: req-calendar-503
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    CalendarEmpty:
+      description: 422 — полный подтверждённо пустой набор
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: CALENDAR_SELECTION_EMPTY
+              message: В выбранном диапазоне нет доступных событий.
+            meta:
+              requestId: req-calendar-422
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    RangeNotSupported:
+      description: 416 — Range/частичное скачивание не поддерживается в MVP; повторите
+        обычную загрузку
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: RANGE_NOT_SUPPORTED
+              message: Частичная загрузка не поддерживается. Загрузите файл целиком.
+            meta:
+              requestId: req-download-range
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-puls_session
+      description: HttpOnly; Secure; SameSite=Lax; Path=/; серверная сессия, токен
+        никогда не в JSON.

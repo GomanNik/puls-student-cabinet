@@ -1,0 +1,18 @@
+import "server-only";
+import { z } from "zod";
+import * as C from "@/shared/contracts/student-api";
+import { readRoute, query, emptyQuery, pagingQuery, notFound } from "@/shared/server/route";
+import { commandRoute, intentionKey } from "@/shared/server/command";
+import { OperationsService } from "./service";
+export const typesGet=readRoute(C.RequestTypeListResponseSchema,async(auth,request)=>{query(request,emptyQuery);const s=new OperationsService(auth);return {data:await s.types(),meta:s.meta()};});
+export const typeGet=(code:string)=>readRoute(C.RequestTypeDetailResponseSchema,async(auth,request)=>{query(request,emptyQuery);const s=new OperationsService(auth),data=(await s.types()).find(t=>t.requestTypeCode===code);if(!data)throw notFound();return {data,meta:s.meta()};});
+export const requestsGet=readRoute(C.RequestListResponseSchema,async(auth,request)=>{const p=query(request,z.strictObject({...pagingQuery,kind:z.enum(["APPLICATION","CERTIFICATE"]).optional()})),s=new OperationsService(auth);return {data:s.page(await s.requests(p.kind),{requests:p.kind??null},p.limit,p.cursor),meta:s.meta()};});
+export const requestGet=(id:string)=>readRoute(C.RequestDetailResponseSchema,async(auth,request)=>{query(request,emptyQuery);const s=new OperationsService(auth);return {data:await s.request(id),meta:s.meta()};});
+export const statusGet=(id:string)=>readRoute(C.RequestStatusResponseSchema,async(auth,request)=>{query(request,emptyQuery);const s=new OperationsService(auth),r=await s.request(id);return {data:{id:r.id,businessStatus:r.businessStatus,externalState:r.externalState,transitions:r.transitions},meta:s.meta()};});
+export const requestPost=commandRoute(C.CreateRequestSchema,C.RequestDetailResponseSchema,async(auth,input,request)=>{const s=new OperationsService(auth),r=await s.createRequest(input,intentionKey(request));return {body:{data:r.data,meta:s.meta()},status:r.replayed?200:201,location:`/api/v1/requests/${r.id}`};});
+export const appealsGet=readRoute(C.AppealListResponseSchema,async(auth,request)=>{const p=query(request,z.strictObject(pagingQuery)),s=new OperationsService(auth);return {data:s.page(await s.appeals(),{appeals:true},p.limit,p.cursor),meta:s.meta()};});
+export const appealGet=(id:string)=>readRoute(C.AppealDetailResponseSchema,async(auth,request)=>{query(request,emptyQuery);const s=new OperationsService(auth);return {data:await s.detail(id),meta:s.meta()};});
+export const appealPost=commandRoute(C.CreateAppealSchema,C.AppealDetailResponseSchema,async(auth,input,request)=>{const s=new OperationsService(auth),r=await s.createAppeal(input,intentionKey(request));return {body:{data:r.data,meta:s.meta()},status:r.replayed?200:201,location:`/api/v1/appeals/${r.id}`};});
+export const messagesGet=(id:string)=>readRoute(C.MessageListResponseSchema,async(auth,request)=>{const p=query(request,z.strictObject(pagingQuery)),s=new OperationsService(auth);return {data:s.page(await s.messages(id),{messages:id},p.limit,p.cursor),meta:s.meta()};});
+export const messagePost=(id:string)=>commandRoute(C.NewMessageSchema,C.MessageDetailResponseSchema,async(auth,input,request)=>{const s=new OperationsService(auth),r=await s.sendMessage(id,input,intentionKey(request));return {body:{data:r.data,meta:s.meta()},status:r.replayed?200:201};});
+export const resolvePost=commandRoute(C.ResolveOperationRequestSchema,C.ResolveResponseSchema,async(auth,input)=>{const s=new OperationsService(auth);return {body:{data:await s.resolve(input),meta:s.meta()}};});

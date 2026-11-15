@@ -1,0 +1,353 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model ServiceConcurrencyLease {
+  leaseId String @id @default(uuid()) @map("lease_id") @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+  scopeCode String @map("scope_code")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  @@unique([accountId, scopeCode])
+  @@map("service_concurrency_lease")
+  @@index([expiresAt], map: "service_lease_expiry_idx")
+}
+
+model StudentAccount {
+  accountId           String   @id @default(uuid()) @map("account_id") @db.Uuid
+  accountStateCode    String   @default("ACTIVE") @map("account_state_code")
+  isDemoAccount       Boolean  @default(true) @map("is_demo_account")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  lastAuthenticatedAt DateTime? @map("last_authenticated_at") @db.Timestamptz
+  credentials         AccountCredential[]
+  sessions            AuthSession[]
+  profile             StudentProfile?
+  identities          StudentExternalIdentity[]
+  @@map("student_account")
+}
+
+model AccountCredential {
+  credentialId              String @id @default(uuid()) @map("credential_id") @db.Uuid
+  accountId                 String @map("account_id") @db.Uuid
+  credentialTypeCode        String @default("LOGIN_PASSWORD") @map("credential_type_code")
+  loginIdentifierNormalized String @unique @map("login_identifier_normalized")
+  passwordHash              String @map("password_hash")
+  credentialStateCode       String @default("ACTIVE") @map("credential_state_code")
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  account                   StudentAccount @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+  @@unique([accountId, credentialTypeCode])
+  @@map("account_credential")
+}
+
+model AuthSession {
+  sessionId      String @id @default(uuid()) @map("session_id") @db.Uuid
+  accountId      String @map("account_id") @db.Uuid
+  tokenDigest    Bytes @unique @map("token_digest")
+  issuedAt       DateTime @map("issued_at") @db.Timestamptz
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz
+  lastActivityAt DateTime @map("last_activity_at") @db.Timestamptz
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz
+  account        StudentAccount @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+  @@index([accountId, revokedAt])
+  @@index([expiresAt])
+  @@map("auth_session")
+}
+
+model AuthRateBucket {
+  keyDigest    Bytes @id @map("key_digest")
+  windowStart  DateTime @map("window_start") @db.Timestamptz
+  failedCount  Int @default(0) @map("failed_count")
+  blockedUntil DateTime? @map("blocked_until") @db.Timestamptz
+  @@index([windowStart])
+  @@map("auth_rate_bucket")
+}
+
+model FacultyRef {
+  facultyId String @id @default(uuid()) @map("faculty_id") @db.Uuid
+  name      String
+  programs  StudyProgramRef[]
+  profiles  StudentProfile[]
+  @@map("faculty_ref")
+}
+
+model StudyProgramRef {
+  programId String @id @default(uuid()) @map("program_id") @db.Uuid
+  facultyId String? @map("faculty_id") @db.Uuid
+  name      String
+  faculty   FacultyRef? @relation(fields: [facultyId], references: [facultyId], onDelete: Restrict)
+  groups    AcademicGroupRef[]
+  profiles  StudentProfile[]
+  @@map("study_program_ref")
+}
+
+model AcademicGroupRef {
+  groupId     String @id @default(uuid()) @map("group_id") @db.Uuid
+  programId   String? @map("program_id") @db.Uuid
+  groupCode   String @map("group_code")
+  displayName String @map("display_name")
+  program     StudyProgramRef? @relation(fields: [programId], references: [programId], onDelete: Restrict)
+  profiles    StudentProfile[]
+  @@map("academic_group_ref")
+}
+
+model StudentProfile {
+  profileId        String @id @default(uuid()) @map("profile_id") @db.Uuid
+  accountId        String @unique @map("account_id") @db.Uuid
+  fullName         String @map("full_name")
+  facultyId        String? @map("faculty_id") @db.Uuid
+  studyProgramId   String? @map("study_program_id") @db.Uuid
+  courseNumber     Int? @map("course_number")
+  academicGroupId  String? @map("academic_group_id") @db.Uuid
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  account          StudentAccount @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+  faculty          FacultyRef? @relation(fields: [facultyId], references: [facultyId], onDelete: Restrict)
+  studyProgram     StudyProgramRef? @relation(fields: [studyProgramId], references: [programId], onDelete: Restrict)
+  academicGroup    AcademicGroupRef? @relation(fields: [academicGroupId], references: [groupId], onDelete: Restrict)
+  @@map("student_profile")
+}
+
+model StudentExternalIdentity {
+  externalIdentityId String @id @default(uuid()) @map("external_identity_id") @db.Uuid
+  accountId          String @map("account_id") @db.Uuid
+  sourceCode         String @map("source_code")
+  externalStudentId  String @map("external_student_id")
+  validFrom          DateTime? @map("valid_from") @db.Date
+  validTo            DateTime? @map("valid_to") @db.Date
+  account            StudentAccount @relation(fields: [accountId], references: [accountId], onDelete: Restrict)
+  @@unique([sourceCode, externalStudentId])
+  @@unique([accountId, sourceCode, externalStudentId])
+  @@map("student_external_identity")
+}
+
+model RequestTypeCatalog {
+  requestTypeId String @id @default(uuid()) @map("request_type_id") @db.Uuid
+  requestKindCode String @map("request_kind_code")
+  requestTypeCode String @map("request_type_code")
+  displayName String @map("display_name")
+  description String? @map("description")
+  formSchemaVersion String @map("form_schema_version")
+  isAvailable Boolean @default(true) @map("is_available")
+  @@map("request_type_catalog")
+  @@unique([requestTypeCode])
+}
+
+model StudentRequest {
+  requestId String @id @default(uuid()) @map("request_id") @db.Uuid
+  ownerAccountId String @map("owner_account_id") @db.Uuid
+  requestTypeId String @map("request_type_id") @db.Uuid
+  formSchemaVersion String @map("form_schema_version")
+  submittedData Json @map("submitted_data")
+  localStateCode String @default("STORED") @map("local_state_code")
+  businessStatusCode String? @map("business_status_code")
+  rejectionReason String? @map("rejection_reason")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  @@map("student_request")
+  @@index([ownerAccountId, createdAt(sort: Desc), requestId], map: "request_owner_idx")
+}
+
+model StudentAppeal {
+  appealId String @id @default(uuid()) @map("appeal_id") @db.Uuid
+  ownerAccountId String @map("owner_account_id") @db.Uuid
+  categoryCode String @map("category_code")
+  subject String @map("subject")
+  submittedData Json @default("{}") @map("submitted_data")
+  localStateCode String @default("STORED") @map("local_state_code")
+  businessStatusCode String @default("OPEN") @map("business_status_code")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  @@map("student_appeal")
+  @@unique([appealId, ownerAccountId])
+  @@index([ownerAccountId, createdAt(sort: Desc), appealId], map: "appeal_owner_idx")
+  @@index([ownerAccountId, updatedAt(sort: Desc), appealId], map: "appeal_owner_updated_idx")
+}
+
+model AppealMessage {
+  messageId String @id @default(uuid()) @map("message_id") @db.Uuid
+  appealId String @map("appeal_id") @db.Uuid
+  senderKindCode String @map("sender_kind_code")
+  senderAccountId String? @map("sender_account_id") @db.Uuid
+  externalSenderRef String? @map("external_sender_ref")
+  sequenceNumber BigInt @map("sequence_number")
+  body String @map("body")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  sourceCreatedAt DateTime? @map("source_created_at") @db.Timestamptz
+  externalMessageId String? @map("external_message_id")
+  sourceCode String? @map("source_code")
+  @@map("appeal_message")
+  @@unique([appealId, sequenceNumber])
+  @@unique([sourceCode, externalMessageId])
+  @@index([appealId, createdAt(sort: Desc)], map: "appeal_message_latest_idx")
+}
+
+model RequestExternalOperation {
+  lastSourceUpdatedAt DateTime? @map("last_source_updated_at") @db.Timestamptz
+  operationId String @id @default(uuid()) @map("operation_id") @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+  sourceCode String @map("source_code")
+  operationKindCode String @map("operation_kind_code")
+  externalOperationId String? @map("external_operation_id")
+  correlationId String @map("correlation_id")
+  externalStateCode String @default("PENDING") @map("external_state_code")
+  startedAt DateTime? @map("started_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  lastErrorCode String? @map("last_error_code")
+  lastErrorSummary String? @map("last_error_summary")
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz
+  nextPollAt DateTime? @map("next_poll_at") @db.Timestamptz
+  lastSeenSourceRevision String? @map("last_seen_source_revision")
+  leaseUntil DateTime? @map("lease_until") @db.Timestamptz
+  leaseToken String? @map("lease_token") @db.Uuid
+  @@map("request_external_operation")
+  @@unique([requestId, sourceCode, operationKindCode])
+  @@unique([sourceCode, externalOperationId])
+}
+
+model RequestExternalAttempt {
+  attemptId String @id @default(uuid()) @map("attempt_id") @db.Uuid
+  operationId String @map("operation_id") @db.Uuid
+  attemptNumber Int @map("attempt_number")
+  startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  outcomeCode String @map("outcome_code")
+  errorCode String? @map("error_code")
+  safeErrorSummary String? @map("safe_error_summary")
+  @@map("request_external_attempt")
+  @@unique([operationId, attemptNumber])
+}
+
+model AppealExternalOperation {
+  operationId String @id @default(uuid()) @map("operation_id") @db.Uuid
+  appealId String @map("appeal_id") @db.Uuid
+  sourceCode String @map("source_code")
+  operationKindCode String @map("operation_kind_code")
+  externalOperationId String? @map("external_operation_id")
+  externalAppealId String? @map("external_appeal_id")
+  replyCursor String? @map("reply_cursor")
+  correlationId String @map("correlation_id")
+  externalStateCode String @default("PENDING") @map("external_state_code")
+  startedAt DateTime? @map("started_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  lastErrorCode String? @map("last_error_code")
+  lastErrorSummary String? @map("last_error_summary")
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz
+  nextPollAt DateTime? @map("next_poll_at") @db.Timestamptz
+  lastSeenSourceRevision String? @map("last_seen_source_revision")
+  leaseUntil DateTime? @map("lease_until") @db.Timestamptz
+  leaseToken String? @map("lease_token") @db.Uuid
+  @@map("appeal_external_operation")
+  @@unique([appealId, sourceCode, operationKindCode])
+  @@unique([sourceCode, externalOperationId])
+  @@unique([sourceCode, externalAppealId])
+}
+
+model AppealExternalAttempt {
+  attemptId String @id @default(uuid()) @map("attempt_id") @db.Uuid
+  operationId String @map("operation_id") @db.Uuid
+  attemptNumber Int @map("attempt_number")
+  startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  outcomeCode String @map("outcome_code")
+  errorCode String? @map("error_code")
+  safeErrorSummary String? @map("safe_error_summary")
+  @@map("appeal_external_attempt")
+  @@unique([operationId, attemptNumber])
+}
+
+model RequestStateTransition {
+  transitionId String @id @default(uuid()) @map("transition_id") @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+  stateDimensionCode String @map("state_dimension_code")
+  fromStateCode String? @map("from_state_code")
+  toStateCode String @map("to_state_code")
+  changedAt DateTime @default(now()) @map("changed_at") @db.Timestamptz
+  changeSourceCode String @map("change_source_code")
+  reasonCode String? @map("reason_code")
+  eventOccurrenceKey String @map("event_occurrence_key")
+  @@map("request_state_transition")
+  @@unique([requestId, stateDimensionCode, eventOccurrenceKey])
+  @@index([requestId, changedAt, transitionId], map: "request_transition_history_idx")
+}
+
+model MessageDeliveryOperation {
+  deliveryOperationId String @id @default(uuid()) @map("delivery_operation_id") @db.Uuid
+  messageId String @map("message_id") @db.Uuid
+  sourceCode String @map("source_code")
+  remoteIdempotencyKey String @map("remote_idempotency_key")
+  deliveryStateCode String @default("PENDING") @map("delivery_state_code")
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz
+  leaseUntil DateTime? @map("lease_until") @db.Timestamptz
+  leaseToken String? @map("lease_token") @db.Uuid
+  externalMessageId String? @map("external_message_id")
+  lastErrorCode String? @map("last_error_code")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  @@map("message_delivery_operation")
+  @@unique([messageId, sourceCode])
+  @@unique([sourceCode, remoteIdempotencyKey])
+  @@unique([sourceCode, externalMessageId])
+  @@index([nextAttemptAt], map: "message_delivery_due_idx")
+}
+
+model MessageDeliveryAttempt {
+  deliveryAttemptId String @id @default(uuid()) @map("delivery_attempt_id") @db.Uuid
+  messageId String @map("message_id") @db.Uuid
+  sourceCode String @map("source_code")
+  attemptNumber Int @map("attempt_number")
+  deliveryStateCode String @map("delivery_state_code")
+  attemptedAt DateTime @default(now()) @map("attempted_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  externalMessageId String? @map("external_message_id")
+  errorCode String? @map("error_code")
+  safeErrorSummary String? @map("safe_error_summary")
+  @@map("message_delivery_attempt")
+  @@unique([messageId, sourceCode, attemptNumber])
+}
+
+model StudentNotificationState {
+  accountId String @map("account_id") @db.Uuid
+  sourceKindCode String @map("source_kind_code")
+  sourceRef String @map("source_ref")
+  categoryCode String @map("category_code")
+  eventOccurrenceKey String @map("event_occurrence_key")
+  readAt DateTime @default(now()) @map("read_at") @db.Timestamptz
+  @@map("student_notification_state")
+  @@id([accountId, sourceKindCode, sourceRef, categoryCode, eventOccurrenceKey])
+  @@index([accountId, readAt(sort: Desc)], map: "notification_account_idx")
+}
+
+model IdempotencyRecord {
+  idempotencyRecordId String @id @default(uuid()) @map("idempotency_record_id") @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+  operationScopeCode String @map("operation_scope_code")
+  keyDigest Bytes @map("key_digest")
+  requestHash Bytes @map("request_hash")
+  resultKind String @map("result_kind")
+  resultId String @map("result_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt DateTime @default(now()) @map("expires_at") @db.Timestamptz
+  @@map("idempotency_record")
+  @@unique([accountId, operationScopeCode, keyDigest])
+  @@index([expiresAt], map: "idempotency_expiry_idx")
+  @@index([accountId, createdAt], map: "idempotency_account_created_idx")
+}
+model SecurityAuditEvent {
+  eventId String @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz
+  eventCode String @map("event_code")
+  requestId String @map("request_id") @db.VarChar(80)
+  actorDigest Bytes? @map("actor_digest")
+  targetKind String @map("target_kind")
+  @@index([occurredAt], map: "security_audit_event_retention_idx")
+  @@map("security_audit_event")
+}

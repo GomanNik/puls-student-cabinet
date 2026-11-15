@@ -1,0 +1,15 @@
+.git
+node_modules
+.next
+out
+coverage
+playwright-report
+test-results
+.env
+.env.*
+_reference
+ПУЛЬС_OGE_Tutor_выборка_кода_для_Codex.zip
+.local
+*.log
+документация
+задачи

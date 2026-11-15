@@ -1,0 +1,9 @@
+import { cp } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { config } from 'dotenv';
+config({ path: process.env.PULS_ENV_FILE ?? '.env.local', quiet: true });
+process.env.HOSTNAME = '127.0.0.1';
+process.env.PORT ||= '3000';
+await cp('.next/static', '.next/standalone/.next/static', { recursive: true });
+await import(pathToFileURL(resolve('.next/standalone/server.js')).href);

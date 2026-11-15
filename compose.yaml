@@ -1,0 +1,81 @@
+name: puls
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: puls
+      POSTGRES_USER: puls_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Укажите пароль владельца БД}
+      PULS_WEB_PASSWORD: ${PULS_WEB_PASSWORD:?Укажите отдельный пароль runtime роли}
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./deploy/init-db.sh:/docker-entrypoint-initdb.d/10-puls.sh:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U puls_owner -d puls"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    networks: [private]
+  migrate:
+    build: { context: ., target: migrate }
+    environment:
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?Укажите URL владельца БД с host db}
+    depends_on: { db: { condition: service_healthy } }
+    networks: [private]
+    restart: "no"
+  web:
+    build: { context: ., target: web }
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Укажите URL puls_web с host db}
+      APP_ORIGIN: ${APP_ORIGIN:?Укажите HTTPS origin}
+      AUTH_RATE_LIMIT_HMAC_KEY: ${AUTH_RATE_LIMIT_HMAC_KEY:?Укажите случайный секрет}
+      TRUSTED_PROXY_KEY: ${TRUSTED_PROXY_KEY:?Укажите отдельный случайный секрет}
+      PULS_FIXTURE_SCENARIO: ${PULS_FIXTURE_SCENARIO:-normal}
+      PULS_COMMUNITY_FIXTURE_SCENARIO: ${PULS_COMMUNITY_FIXTURE_SCENARIO:-normal}
+      PULS_AI_PROVIDER: ${PULS_AI_PROVIDER:-DEMO_MOCK}
+      PULS_AI_FIXTURE_SCENARIO: ${PULS_AI_FIXTURE_SCENARIO:-normal}
+      GIGACHAT_AUTHORIZATION_KEY: ${GIGACHAT_AUTHORIZATION_KEY:-}
+      GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
+      GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-2}
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    networks: [private, public]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+  worker:
+    build: { context: ., target: worker }
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Укажите URL puls_web с host db}
+      APP_ORIGIN: ${APP_ORIGIN:?Укажите HTTPS origin}
+      AUTH_RATE_LIMIT_HMAC_KEY: ${AUTH_RATE_LIMIT_HMAC_KEY:?Укажите случайный секрет}
+      TRUSTED_PROXY_KEY: ${TRUSTED_PROXY_KEY:?Укажите отдельный случайный секрет}
+      PULS_ADMIN_FIXTURE_SCENARIO: ${PULS_ADMIN_FIXTURE_SCENARIO:-normal}
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    networks: [private]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      PULS_HOST: ${PULS_HOST:?Укажите домен}
+      TRUSTED_PROXY_KEY: ${TRUSTED_PROXY_KEY:?Укажите секрет прокси}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web]
+    networks: [private, public]
+    restart: unless-stopped
+networks:
+  private: { internal: true }
+  public: {}
+volumes:
+  database: {}
+  caddy_data: {}
+  caddy_config: {}

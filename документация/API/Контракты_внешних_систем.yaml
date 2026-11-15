@@ -1,0 +1,5991 @@
+openapi: 3.1.0
+info:
+  title: ПУЛЬС — контракты закрытых тестовых университетских источников
+  version: 1.0.0
+  description: Исключительно server-to-server fixture API. Нет публичного ingress и нет доступа из браузера. Данные
+    и идентичность вымышлены; Student API отдельно валидирует ACL и не возвращает клиенту сырые ExternalRef/sourceCode.
+servers:
+- url: http://university-fixture:8081/mock/v1
+  description: Только приватная Docker-сеть; имя демонстрационное и не является публичным адресом
+tags:
+- name: Контекст
+  description: Identity, membership и официальная подгруппа
+- name: Занятия
+  description: План, изменения, проведение, посещаемость
+- name: Учебная деятельность
+  description: Работы, этапы, результаты, аттестации
+- name: Материалы
+  description: Связи, метаданные и поток файла
+- name: Информация
+  description: Объявления, события, сроки
+- name: Документооборот
+  description: Идемпотентные команды заявок
+- name: Переписка
+  description: Идемпотентные обращения/реплики и демо-ответы
+security:
+- internalServiceToken: []
+paths:
+  /students/{externalStudentId}/context:
+    get:
+      tags:
+      - Контекст
+      operationId: readStudentContext
+      summary: Периоды, привязки и профильную аудиторию одного вымышленного студента
+      description: Сервер разрешает externalStudentId только через защищённое соответствие аккаунта.
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextRead'
+              example:
+                sourceCode: DEMO_UNIVERSITY
+                requestedScope:
+                  externalStudentId: student-A
+                availability: OK
+                isComplete: true
+                fetchedAt: '2026-11-11T09:00:00+06:00'
+                sourceRevision: rev-context-A-2
+                items:
+                - ref:
+                    sourceCode: DEMO_UNIVERSITY
+                    objectKind: STUDENT_CONTEXT
+                    externalId: student-A
+                  externalStudentId: student-A
+                  periods:
+                  - ref:
+                      sourceCode: DEMO_UNIVERSITY
+                      objectKind: ACADEMIC_PERIOD
+                      externalId: fall-26
+                    periodId: fall-26
+                    label: Осень 2026
+                  memberships:
+                  - membershipRef:
+                      sourceCode: DEMO_UNIVERSITY
+                      objectKind: MEMBERSHIP
+                      externalId: m-A-01
+                    externalStudentId: student-A
+                    periodId: fall-26
+                    offeringId: math-101
+                    state: CONFIRMED
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/offerings:
+    get:
+      tags:
+      - Контекст
+      operationId: readStudentOfferings
+      summary: Конкретные изучаемые дисциплины в периоде
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferingRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/assignments:
+    get:
+      tags:
+      - Контекст
+      operationId: readOfficialAssignments
+      summary: Официальные назначения по каждой дисциплине
+      description: Другие подгруппы не выдаются как варианты переключения.
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/academic-units:
+    get:
+      tags:
+      - Контекст
+      operationId: readStudentAcademicUnits
+      summary: Самостоятельные учебные единицы периода
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnitRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/schedule:
+    get:
+      tags:
+      - Занятия
+      operationId: readSchedule
+      summary: План занятий заданного студента и диапазона
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/schedule/changes:
+    get:
+      tags:
+      - Занятия
+      operationId: readScheduleChanges
+      summary: Подтверждённые изменения расписания с occurrence keys
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/actual-sessions:
+    get:
+      tags:
+      - Занятия
+      operationId: readActualSessions
+      summary: Факты проведения (не выводятся из планов)
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActualRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/attendance:
+    get:
+      tags:
+      - Занятия
+      operationId: readOfficialAttendance
+      summary: Персональные официальные отметки (не выводятся из фактов проведения)
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendanceRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/offerings/{offeringId}/works:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readWorks
+      summary: Выданные учебные работы и курсовые дисциплины
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/OfferingId'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkRead'
+              example:
+                sourceCode: DEMO_UNIVERSITY
+                requestedScope:
+                  externalStudentId: student-A
+                  periodId: fall-26
+                  offeringId: math-101
+                availability: NO_DATA
+                isComplete: true
+                fetchedAt: '2026-11-11T09:00:00+06:00'
+                sourceRevision: rev-work-1
+                items: []
+                nextCursor: null
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/offerings/{offeringId}/work-progress:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readWorkProgress
+      summary: Подтверждённое выполнение и сдача отдельно от выдачи
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/OfferingId'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/offerings/{offeringId}/works/{workId}/stages:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readWorkStages
+      summary: Только реальные этапы выбранной работы
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/OfferingId'
+      - $ref: '#/components/parameters/WorkId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/offerings/{offeringId}/works/{workId}/stage-progress:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readWorkStageProgress
+      summary: Подтверждённые состояния этапов
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/OfferingId'
+      - $ref: '#/components/parameters/WorkId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageProgressRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/offerings/{offeringId}/works/{workId}/results:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readWorkResults
+      summary: Результат конкретной работы без дублирования оценочного компонента
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/OfferingId'
+      - $ref: '#/components/parameters/WorkId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkResultRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/offerings/{offeringId}/assessments:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readAssessmentComponents
+      summary: Балльные компоненты, если применимы
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/OfferingId'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/offerings/{offeringId}/attestations:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readAttestationPlans
+      summary: Запланированная аттестация отдельно от полученного результата
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/OfferingId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttestationRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/offerings/{offeringId}/course-results:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readOfficialResults
+      summary: Официальный академический итог без самостоятельного расчёта
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/OfferingId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseResultRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/academic-units/{unitId}/works:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readUnitWorks
+      summary: Работы самостоятельной учебной единицы без offeringId
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/UnitId'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/materials:
+    get:
+      tags:
+      - Материалы
+      operationId: readLearningMaterials
+      summary: Материалы с явными разрешёнными связями
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - name: periodId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: offeringId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: unitId
+        in: query
+        required: false
+        schema:
+          type: string
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/materials/{materialId}/download:
+    get:
+      tags:
+      - Материалы
+      operationId: readMaterialFile
+      summary: Поток demo-файла из фиксированного хранилища
+      description: Проверка подтверждённого членства и метаданных; произвольный URL недопустим.
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/MaterialId'
+      responses:
+        '200':
+          description: Поток только доверенного демонстрационного FILE без SSRF
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+            Content-Length:
+              schema:
+                type: integer
+                minimum: 0
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/announcements:
+    get:
+      tags:
+      - Информация
+      operationId: readAnnouncements
+      summary: Объявления только подтверждённой аудитории
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/announcements/{announcementId}:
+    get:
+      tags:
+      - Информация
+      operationId: readAnnouncementById
+      summary: Детальная публикация вне первой порции
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/AnnouncementId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/calendar-events:
+    get:
+      tags:
+      - Информация
+      operationId: readUniversityEvents
+      summary: События университета с явной аудиторией
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/deadlines:
+    get:
+      tags:
+      - Информация
+      operationId: readAcademicDeadlines
+      summary: Подтверждённые академические сроки и связи
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeadlineRead'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /requests/operations:
+    post:
+      tags:
+      - Документооборот
+      operationId: submitExternalRequest
+      summary: Идемпотентный приём заявки из собственного API
+      description: Ключ operationId обязателен. Повтор с тем же payload возвращает прежний результат; иной payload
+        с тем же ключом → 409. ACK != READY.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestSubmitCommand'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestOperationStatus'
+              example:
+                sourceCode: DEMO_UNIVERSITY
+                operationId: 00000000-0000-4000-8000-000000000001
+                correlationId: request-local-1
+                externalOperationId: remote-op-1
+                transportState: ACKNOWLEDGED
+                alreadyProcessed: false
+                businessStatus: SUBMITTED
+                sourceRevision: rev-op-1
+                transitions:
+                - eventOccurrenceKey: accepted-1
+                  businessStatus: SUBMITTED
+                  occurredAt: '2026-11-11T09:00:00+06:00'
+                  sourceRevision: rev-op-1
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          description: Конфликт удалённого operationId с иным payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalError'
+              example:
+                error:
+                  code: IDEMPOTENCY_CONFLICT
+                  message: Для этого operationId уже обработана другая команда.
+                  correlationId: req-demo-001
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /requests/operations/{operationId}:
+    get:
+      tags:
+      - Документооборот
+      operationId: getExternalRequestOperation
+      summary: Сверка приёма и подтверждённых предметных состояний заявки
+      parameters:
+      - $ref: '#/components/parameters/OperationId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestOperationStatus'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /appeals/operations:
+    post:
+      tags:
+      - Переписка
+      operationId: submitExternalAppeal
+      summary: Идемпотентное создание обращения с первой репликой
+      description: Тестовый сервис не создаёт кабинет деканата.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppealSubmitCommand'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppealOperationStatus'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /appeals/operations/{operationId}:
+    get:
+      tags:
+      - Переписка
+      operationId: getExternalAppealOperation
+      summary: Проверка ранее инициированного создания обращения
+      parameters:
+      - $ref: '#/components/parameters/OperationId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppealOperationStatus'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /appeals/{externalAppealId}/messages:
+    post:
+      tags:
+      - Переписка
+      operationId: sendExternalAppealMessage
+      summary: Идемпотентная отправка следующей реплики
+      description: Дедупликация по messageId; чужое обращение отклоняется.
+      parameters:
+      - $ref: '#/components/parameters/ExternalAppealId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageSubmitCommand'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOperationStatus'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /appeals/{externalAppealId}/messages/{messageId}:
+    get:
+      tags:
+      - Переписка
+      operationId: getExternalMessageDelivery
+      summary: Проверка доставки сообщения после неизвестного результата
+      parameters:
+      - $ref: '#/components/parameters/ExternalAppealId'
+      - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOperationStatus'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /appeals/{externalAppealId}/replies:
+    get:
+      tags:
+      - Переписка
+      operationId: readDemoReplies
+      summary: Стабильные демо-ответы внешней стороны для опроса runner
+      description: Только «Деканат (демо-ответ)», внешние messageId и occurrenceKey стабильны, повторы не удваивают
+        историю.
+      parameters:
+      - $ref: '#/components/parameters/ExternalAppealId'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      - name: externalStudentId
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+        description: Серверная проверка привязки remote appeal к текущей внешней личности, не auth пользователя
+          в mock.
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplyRead'
+              example:
+                sourceCode: DEMO_UNIVERSITY
+                requestedScope:
+                  externalStudentId: student-A
+                availability: OK
+                isComplete: true
+                fetchedAt: '2026-11-11T09:00:00+06:00'
+                sourceRevision: rev-replies-2
+                items:
+                - ref:
+                    sourceCode: DEMO_UNIVERSITY
+                    objectKind: APPEAL_REPLY
+                    externalId: reply-01
+                  externalMessageId: reply-01
+                  externalAppealId: remote-appeal-1
+                  body: Ваше обращение получено (демо).
+                  sourceCreatedAt: '2026-11-11T09:00:00+06:00'
+                  senderKind: EXTERNAL_PARTY
+                  senderLabel: Деканат (демо-ответ)
+                  eventOccurrenceKey: reply-01
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/offerings/{offeringId}/grading-model:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readGradingModel
+      summary: Модель оценивания конкретной дисциплины (может быть NOT_APPLICABLE)
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/OfferingId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradingModelRead'
+              example:
+                sourceCode: DEMO_UNIVERSITY
+                requestedScope:
+                  externalStudentId: student-A
+                  periodId: fall-26
+                  offeringId: math-101
+                availability: NO_DATA
+                isComplete: true
+                fetchedAt: '2026-11-11T09:00:00+06:00'
+                sourceRevision: rev-work-1
+                items: []
+                nextCursor: null
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/academic-units/{unitId}/work-progress:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readUnitWorkProgress
+      summary: Состояния выполнения работ самостоятельной единицы
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/UnitId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressRead'
+              example:
+                sourceCode: DEMO_UNIVERSITY
+                requestedScope:
+                  externalStudentId: student-A
+                  periodId: fall-26
+                  offeringId: math-101
+                availability: NO_DATA
+                isComplete: true
+                fetchedAt: '2026-11-11T09:00:00+06:00'
+                sourceRevision: rev-work-1
+                items: []
+                nextCursor: null
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/academic-units/{unitId}/works/{workId}/stages:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readUnitWorkStages
+      summary: Подтверждённые этапы самостоятельной работы
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/UnitId'
+      - $ref: '#/components/parameters/WorkId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageRead'
+              example:
+                sourceCode: DEMO_UNIVERSITY
+                requestedScope:
+                  externalStudentId: student-A
+                  periodId: fall-26
+                  offeringId: math-101
+                availability: NO_DATA
+                isComplete: true
+                fetchedAt: '2026-11-11T09:00:00+06:00'
+                sourceRevision: rev-work-1
+                items: []
+                nextCursor: null
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/academic-units/{unitId}/works/{workId}/stage-progress:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readUnitStageProgress
+      summary: Подтверждённое выполнение этапов самостоятельной работы
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/UnitId'
+      - $ref: '#/components/parameters/WorkId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageProgressRead'
+              example:
+                sourceCode: DEMO_UNIVERSITY
+                requestedScope:
+                  externalStudentId: student-A
+                  periodId: fall-26
+                  offeringId: math-101
+                availability: NO_DATA
+                isComplete: true
+                fetchedAt: '2026-11-11T09:00:00+06:00'
+                sourceRevision: rev-work-1
+                items: []
+                nextCursor: null
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+  /students/{externalStudentId}/periods/{periodId}/academic-units/{unitId}/works/{workId}/results:
+    get:
+      tags:
+      - Учебная деятельность
+      operationId: readUnitWorkResults
+      summary: Подтверждённые результаты самостоятельной работы
+      parameters:
+      - $ref: '#/components/parameters/ExternalStudentId'
+      - $ref: '#/components/parameters/PeriodId'
+      - $ref: '#/components/parameters/UnitId'
+      - $ref: '#/components/parameters/WorkId'
+      responses:
+        '200':
+          description: Успешная серверная операция
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkResultRead'
+              example:
+                sourceCode: DEMO_UNIVERSITY
+                requestedScope:
+                  externalStudentId: student-A
+                  periodId: fall-26
+                  offeringId: math-101
+                availability: NO_DATA
+                isComplete: true
+                fetchedAt: '2026-11-11T09:00:00+06:00'
+                sourceRevision: rev-work-1
+                items: []
+                nextCursor: null
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция cookie или внутреннего сервисного контекста
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '504':
+          $ref: '#/components/responses/504'
+      x-server-to-server-only: true
+components:
+  securitySchemes:
+    internalServiceToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+      description: Доверенный машинный ключ из защищённой серверной конфигурации. Ни в браузер, ни в репозиторий
+        не передавать.
+  schemas:
+    ErrorDetail:
+      type: object
+      properties:
+        field:
+          type: string
+          maxLength: 160
+        issue:
+          type: string
+          maxLength: 240
+      additionalProperties: false
+      required:
+      - field
+      - issue
+    ErrorObject:
+      type: object
+      properties:
+        code:
+          type: string
+          maxLength: 100
+          minLength: 1
+        message:
+          type: string
+          maxLength: 300
+          minLength: 1
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+          maxItems: 30
+      additionalProperties: false
+      required:
+      - code
+      - message
+    ErrorMeta:
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Непрозрачный идентификатор, не доказывает право доступа
+          maxLength: 240
+          minLength: 1
+      additionalProperties: false
+      required:
+      - requestId
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+        meta:
+          $ref: '#/components/schemas/ErrorMeta'
+      additionalProperties: false
+      required:
+      - error
+      - meta
+    AcademicDate:
+      type: object
+      properties:
+        precision:
+          type: string
+          enum:
+          - DATE_ONLY
+          - DATE_TIME
+        'on':
+          type: string
+          format: date
+        at:
+          type: string
+          format: date-time
+        timeZone:
+          type: string
+          description: IANA zone, только если есть достоверная зона источника
+          maxLength: 100
+      additionalProperties: false
+      required:
+      - precision
+      description: При DATE_ONLY заполняется on, при DATE_TIME — at и время по ISO с offset; никакого вымышленного
+        часа.
+      oneOf:
+      - properties:
+          precision:
+            const: DATE_ONLY
+        required:
+        - precision
+        - 'on'
+        not:
+          anyOf:
+          - required:
+            - at
+          - required:
+            - timeZone
+      - properties:
+          precision:
+            const: DATE_TIME
+        required:
+        - precision
+        - at
+        - timeZone
+        not:
+          required:
+          - 'on'
+    AssessmentValue:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - NUMERIC
+          - TEXT
+          - CODE
+        numeric:
+          type: string
+          description: Точная десятичная строка, включая подтверждённый 0
+          pattern: ^-?\d+(?:\.\d+)?$
+        text:
+          type: string
+        code:
+          type: string
+        rawValueText:
+          type: string
+      additionalProperties: false
+      required:
+      - kind
+      oneOf:
+      - properties:
+          kind:
+            const: NUMERIC
+        required:
+        - kind
+        - numeric
+        not:
+          anyOf:
+          - required:
+            - text
+          - required:
+            - code
+      - properties:
+          kind:
+            const: TEXT
+        required:
+        - kind
+        - text
+        not:
+          anyOf:
+          - required:
+            - numeric
+          - required:
+            - code
+      - properties:
+          kind:
+            const: CODE
+        required:
+        - kind
+        - code
+        not:
+          anyOf:
+          - required:
+            - numeric
+          - required:
+            - text
+    CertificateData:
+      type: object
+      properties:
+        copies:
+          type: integer
+          minimum: 1
+          maximum: 5
+        presentationPlace:
+          type: string
+          maxLength: 160
+        comment:
+          type: string
+          maxLength: 500
+      additionalProperties: false
+      required:
+      - copies
+    ApplicationData:
+      type: object
+      properties:
+        subject:
+          type: string
+          maxLength: 120
+          minLength: 3
+        statementBody:
+          type: string
+          maxLength: 3000
+          minLength: 10
+        comment:
+          type: string
+          maxLength: 500
+      additionalProperties: false
+      required:
+      - subject
+      - statementBody
+    ExternalRef:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          maxLength: 64
+          minLength: 1
+        objectKind:
+          type: string
+          maxLength: 80
+          minLength: 1
+        externalId:
+          type: string
+          maxLength: 240
+          minLength: 1
+      additionalProperties: false
+      required:
+      - sourceCode
+      - objectKind
+      - externalId
+      description: Уникальность по (sourceCode, objectKind, externalId); браузеру raw ExternalRef не возвращать.
+    RequestedScope:
+      type: object
+      properties:
+        externalStudentId:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        unitId:
+          type: string
+          minLength: 1
+      additionalProperties: false
+      required:
+      - externalStudentId
+      description: Только из серверной карты личности, никаких прав из переданного пути самого по себе.
+    SourceAvailability:
+      type: string
+      enum:
+      - OK
+      - PARTIAL
+      - NO_DATA
+      - NOT_APPLICABLE
+      - ERROR
+    Audience:
+      type: object
+      properties:
+        scopeType:
+          type: string
+          enum:
+          - UNIVERSITY
+          - FACULTY
+          - PROGRAM_COURSE
+          - GROUP
+          - OFFERING
+          - SUBGROUP
+          - STUDENT
+        scopeId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+        sourceRef:
+          $ref: '#/components/schemas/ExternalRef'
+      additionalProperties: false
+      required:
+      - scopeType
+      - scopeId
+      description: Явное подтверждение аудитории; null/отсутствие не равно доступу всему университету.
+    Membership:
+      type: object
+      properties:
+        membershipRef:
+          $ref: '#/components/schemas/ExternalRef'
+        externalStudentId:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        state:
+          type: string
+          enum:
+          - CONFIRMED
+          - NOT_CONFIRMED
+      additionalProperties: false
+      required:
+      - membershipRef
+      - externalStudentId
+      - periodId
+      - offeringId
+      - state
+      description: Студенческий сервер допускает только CONFIRMED в том же периоде.
+    AcademicPeriod:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        periodId:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        startsOn:
+          type: string
+          format: date
+        endsOn:
+          type: string
+          format: date
+      additionalProperties: false
+      required:
+      - ref
+      - periodId
+      - label
+    ContextRecord:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        externalStudentId:
+          type: string
+          minLength: 1
+        facultyId:
+          type: string
+        programId:
+          type: string
+        groupId:
+          type: string
+        course:
+          type: integer
+          minimum: 1
+        periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcademicPeriod'
+        memberships:
+          type: array
+          items:
+            $ref: '#/components/schemas/Membership'
+      additionalProperties: false
+      required:
+      - ref
+      - externalStudentId
+      - periods
+      - memberships
+    Assignment:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        externalStudentId:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        subgroupId:
+          type: string
+          minLength: 1
+        subgroupLabel:
+          type: string
+          minLength: 1
+        isOfficial:
+          const: true
+      additionalProperties: false
+      required:
+      - ref
+      - externalStudentId
+      - periodId
+      - offeringId
+      - subgroupId
+      - subgroupLabel
+      - isOfficial
+    Offering:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        periodId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        groupId:
+          type: string
+        membershipRef:
+          $ref: '#/components/schemas/ExternalRef'
+        gradingModelRef:
+          $ref: '#/components/schemas/ExternalRef'
+      additionalProperties: false
+      required:
+      - ref
+      - periodId
+      - offeringId
+      - title
+      - membershipRef
+    AcademicUnit:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        unitId:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        unitTypeLabel:
+          type: string
+          minLength: 1
+        audiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/Audience'
+          minItems: 1
+      additionalProperties: false
+      required:
+      - ref
+      - unitId
+      - periodId
+      - title
+      - unitTypeLabel
+      - audiences
+      description: Самостоятельная учебная единица, без фиктивного offeringId.
+    ScheduleRecord:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        scheduleEntryId:
+          type: string
+          minLength: 1
+        occurrenceId:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        lessonType:
+          type: string
+        title:
+          type: string
+          minLength: 1
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        timeZone:
+          type: string
+        room:
+          type: string
+        teacherLabel:
+          type: string
+        state:
+          type: string
+          enum:
+          - PLANNED
+          - RESCHEDULED
+          - CANCELLED
+        subgroupId:
+          type: string
+        audiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/Audience'
+          minItems: 1
+      additionalProperties: false
+      required:
+      - ref
+      - scheduleEntryId
+      - occurrenceId
+      - periodId
+      - offeringId
+      - title
+      - state
+      - audiences
+      description: При переносе scheduleEntryId+occurrenceId сохраняются, revision меняется.
+    ScheduleChange:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        scheduleEntryId:
+          type: string
+          minLength: 1
+        occurrenceId:
+          type: string
+          minLength: 1
+        changeId:
+          type: string
+          minLength: 1
+        sourceRevision:
+          type: string
+          minLength: 1
+        changeKind:
+          type: string
+          enum:
+          - RESCHEDULED
+          - CANCELLED
+          - UPDATED
+        occurredAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+      additionalProperties: false
+      required:
+      - ref
+      - scheduleEntryId
+      - occurrenceId
+      - changeId
+      - sourceRevision
+      - changeKind
+    ActualClass:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        sessionId:
+          type: string
+          minLength: 1
+        scheduleEntryId:
+          type: string
+          minLength: 1
+        occurrenceId:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        held:
+          type: boolean
+        heldOn:
+          type: string
+          format: date
+        heldAt:
+          type: string
+          format: date-time
+        topic:
+          type: string
+      additionalProperties: false
+      required:
+      - ref
+      - sessionId
+      - scheduleEntryId
+      - occurrenceId
+      - periodId
+      - offeringId
+      - held
+    Attendance:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        attendanceId:
+          type: string
+          minLength: 1
+        sessionId:
+          type: string
+          minLength: 1
+        externalStudentId:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum:
+          - PRESENT
+          - ABSENT
+          - OTHER_RECORDED
+        statusLabel:
+          type: string
+          minLength: 1
+        recordedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - ref
+      - attendanceId
+      - sessionId
+      - externalStudentId
+      - periodId
+      - offeringId
+      - status
+      - statusLabel
+    AcademicWork:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        workId:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        unitId:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        workTypeCode:
+          type: string
+        workTypeLabel:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        topicLabel:
+          type: string
+        issued:
+          $ref: '#/components/schemas/AcademicDate'
+        due:
+          $ref: '#/components/schemas/AcademicDate'
+        audiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/Audience'
+          minItems: 1
+      additionalProperties: false
+      required:
+      - ref
+      - workId
+      - periodId
+      - title
+      - workTypeLabel
+      - audiences
+      oneOf:
+      - required:
+        - offeringId
+        not:
+          required:
+          - unitId
+      - required:
+        - unitId
+        not:
+          required:
+          - offeringId
+    WorkProgress:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        externalStudentId:
+          type: string
+          minLength: 1
+        workId:
+          type: string
+          minLength: 1
+        assignmentStatusCode:
+          type: string
+        completionStatusCode:
+          type: string
+        submissionStatusCode:
+          type: string
+        reviewStatusCode:
+          type: string
+        completedAt:
+          type: string
+          format: date-time
+        submittedAt:
+          type: string
+          format: date-time
+        reviewedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - ref
+      - externalStudentId
+      - workId
+      description: Не выводить «не выполнено» из отсутствующей записи.
+    Stage:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        stageId:
+          type: string
+          minLength: 1
+        workId:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        displayOrder:
+          type: integer
+          minimum: 0
+        due:
+          $ref: '#/components/schemas/AcademicDate'
+      additionalProperties: false
+      required:
+      - ref
+      - stageId
+      - workId
+      - title
+    StageProgress:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        stageId:
+          type: string
+          minLength: 1
+        externalStudentId:
+          type: string
+          minLength: 1
+        completionStatusCode:
+          type: string
+        submissionStatusCode:
+          type: string
+        reviewStatusCode:
+          type: string
+        completedAt:
+          type: string
+          format: date-time
+        submittedAt:
+          type: string
+          format: date-time
+        reviewedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - ref
+      - stageId
+      - externalStudentId
+    AssessmentComponent:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        componentId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        weightText:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Вес в исходном обозначении источника, без пересчёта в проценты.
+        maxValue:
+          type: string
+          pattern: ^\d+(?:\.\d+)?$
+        value:
+          $ref: '#/components/schemas/AssessmentValue'
+        valueState:
+          type: string
+          enum:
+          - UNKNOWN
+          - NOT_APPLICABLE
+          - PENDING
+          - KNOWN_ZERO
+          - READY
+        assessedAt:
+          type: string
+          format: date-time
+        linkedWorkRef:
+          $ref: '#/components/schemas/ExternalRef'
+      additionalProperties: false
+      required:
+      - ref
+      - componentId
+      - offeringId
+      - label
+      - valueState
+    Attestation:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        attestationId:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        kindCode:
+          type: string
+        kindLabel:
+          type: string
+          minLength: 1
+        planned:
+          $ref: '#/components/schemas/AcademicDate'
+        locationLabel:
+          type: string
+      additionalProperties: false
+      required:
+      - ref
+      - attestationId
+      - periodId
+      - offeringId
+      - kindLabel
+    CourseResult:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        courseResultId:
+          type: string
+          minLength: 1
+        periodId:
+          type: string
+          minLength: 1
+        offeringId:
+          type: string
+          minLength: 1
+        externalStudentId:
+          type: string
+          minLength: 1
+        result:
+          $ref: '#/components/schemas/AssessmentValue'
+        resultState:
+          type: string
+          enum:
+          - UNKNOWN
+          - PENDING
+          - KNOWN_ZERO
+          - READY
+        assessedAt:
+          type: string
+          format: date-time
+        attestationId:
+          type: string
+      additionalProperties: false
+      required:
+      - ref
+      - courseResultId
+      - periodId
+      - offeringId
+      - externalStudentId
+      - resultState
+    WorkResult:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        resultId:
+          type: string
+          minLength: 1
+        workId:
+          type: string
+          minLength: 1
+        externalStudentId:
+          type: string
+          minLength: 1
+        stageId:
+          type: string
+        value:
+          $ref: '#/components/schemas/AssessmentValue'
+        assessedAt:
+          type: string
+          format: date-time
+        linkedComponentRef:
+          $ref: '#/components/schemas/ExternalRef'
+      additionalProperties: false
+      required:
+      - ref
+      - resultId
+      - workId
+      - externalStudentId
+      - value
+    Material:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        materialId:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        kind:
+          type: string
+          enum:
+          - LINK
+          - FILE
+        publicHttpsUrl:
+          type: string
+          format: uri
+          pattern: ^https://
+          description: Разрешённая HTTPS-ссылка из фикстуры, после серверной allowlist-проверки.
+        resourceHandle:
+          type: string
+          description: Только серверная ссылка на фиксированный ресурс при FILE
+        mimeType:
+          type: string
+        sizeBytes:
+          type: integer
+          minimum: 0
+        offeringId:
+          type: string
+        unitId:
+          type: string
+        relatedWorkRefs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExternalRef'
+        relatedClassRefs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExternalRef'
+        audiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/Audience'
+          minItems: 1
+      additionalProperties: false
+      required:
+      - ref
+      - materialId
+      - title
+      - kind
+      - audiences
+      allOf:
+      - if:
+          properties:
+            kind:
+              const: FILE
+          required:
+          - kind
+        then:
+          required:
+          - resourceHandle
+          not:
+            required:
+            - publicHttpsUrl
+      - if:
+          properties:
+            kind:
+              const: LINK
+          required:
+          - kind
+        then:
+          required:
+          - publicHttpsUrl
+          not:
+            required:
+            - resourceHandle
+    Announcement:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        announcementId:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        body:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        authorLabel:
+          type: string
+        eventOccurrenceKey:
+          type: string
+          minLength: 1
+        audiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/Audience'
+          minItems: 1
+      additionalProperties: false
+      required:
+      - ref
+      - announcementId
+      - title
+      - eventOccurrenceKey
+      - audiences
+    CalendarEvent:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        eventId:
+          type: string
+          minLength: 1
+        eventOccurrenceId:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        starts:
+          $ref: '#/components/schemas/AcademicDate'
+        ends:
+          $ref: '#/components/schemas/AcademicDate'
+        description:
+          type: string
+        location:
+          type: string
+        audiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/Audience'
+          minItems: 1
+      additionalProperties: false
+      required:
+      - ref
+      - eventId
+      - eventOccurrenceId
+      - title
+      - starts
+      - audiences
+    Deadline:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        deadlineId:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        due:
+          $ref: '#/components/schemas/AcademicDate'
+        relatedWorkRef:
+          $ref: '#/components/schemas/ExternalRef'
+        relatedAttestationRef:
+          $ref: '#/components/schemas/ExternalRef'
+        audiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/Audience'
+          minItems: 1
+      additionalProperties: false
+      required:
+      - ref
+      - deadlineId
+      - title
+      - due
+      - audiences
+      description: Только подтверждённый самостоятельный дедлайн или связь с исходной работой.
+    Reply:
+      type: object
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        externalMessageId:
+          type: string
+          minLength: 1
+        externalAppealId:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          minLength: 1
+        sourceCreatedAt:
+          type: string
+          format: date-time
+        senderKind:
+          const: EXTERNAL_PARTY
+        senderLabel:
+          const: Деканат (демо-ответ)
+        eventOccurrenceKey:
+          type: string
+          minLength: 1
+      additionalProperties: false
+      required:
+      - ref
+      - externalMessageId
+      - externalAppealId
+      - body
+      - sourceCreatedAt
+      - senderKind
+      - senderLabel
+      - eventOccurrenceKey
+    ContextRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContextRecord'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    MembershipRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Membership'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    AssignmentRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Assignment'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    OfferingRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Offering'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    UnitRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcademicUnit'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    ScheduleRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleRecord'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    ChangeRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleChange'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    ActualRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActualClass'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    AttendanceRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attendance'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    WorkRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcademicWork'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    ProgressRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkProgress'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    StageRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Stage'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    StageProgressRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StageProgress'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    AssessmentRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentComponent'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    WorkResultRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkResult'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    AttestationRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attestation'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    CourseResultRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseResult'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    MaterialRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Material'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    AnnouncementRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Announcement'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    EventRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarEvent'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    DeadlineRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Deadline'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    ReplyRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reply'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+    RequestSubmitCommand:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        operationId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          minLength: 1
+        externalStudentId:
+          type: string
+          minLength: 1
+        requestTypeCode:
+          type: string
+          enum:
+          - DEMO_CERTIFICATE
+          - DEMO_APPLICATION
+        formSchemaVersion:
+          const: v1
+        submittedData:
+          oneOf:
+          - $ref: '#/components/schemas/CertificateData'
+          - $ref: '#/components/schemas/ApplicationData'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - operationId
+      - correlationId
+      - externalStudentId
+      - requestTypeCode
+      - formSchemaVersion
+      - submittedData
+      allOf:
+      - if:
+          properties:
+            requestTypeCode:
+              const: DEMO_CERTIFICATE
+          required:
+          - requestTypeCode
+        then:
+          properties:
+            submittedData:
+              $ref: '#/components/schemas/CertificateData'
+      - if:
+          properties:
+            requestTypeCode:
+              const: DEMO_APPLICATION
+          required:
+          - requestTypeCode
+        then:
+          properties:
+            submittedData:
+              $ref: '#/components/schemas/ApplicationData'
+    RequestBusinessTransition:
+      type: object
+      properties:
+        eventOccurrenceKey:
+          type: string
+          minLength: 1
+        businessStatus:
+          type: string
+          enum:
+          - SUBMITTED
+          - IN_PROGRESS
+          - READY
+          - REJECTED
+        occurredAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        sourceRevision:
+          type: string
+          minLength: 1
+      additionalProperties: false
+      required:
+      - eventOccurrenceKey
+      - businessStatus
+      - occurredAt
+      - sourceRevision
+    RequestOperationStatus:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        operationId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          minLength: 1
+        externalOperationId:
+          type: string
+        transportState:
+          type: string
+          enum:
+          - PENDING
+          - ACKNOWLEDGED
+          - UNKNOWN
+          - RETRYABLE_ERROR
+        alreadyProcessed:
+          type: boolean
+        businessStatus:
+          type:
+          - string
+          - 'null'
+          enum:
+          - SUBMITTED
+          - IN_PROGRESS
+          - READY
+          - REJECTED
+          - null
+        transitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequestBusinessTransition'
+        sourceRevision:
+          type: string
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - sourceCode
+      - operationId
+      - correlationId
+      - transportState
+      - alreadyProcessed
+      - businessStatus
+      - transitions
+      description: businessStatus=null если приём внешним источником не доказан; технический ERROR никогда не становится
+        REJECTED.
+    AppealSubmitCommand:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        operationId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          minLength: 1
+        externalStudentId:
+          type: string
+          minLength: 1
+        categoryCode:
+          type: string
+          enum:
+          - QUESTION
+          - PROBLEM
+          - OTHER
+        subject:
+          type: string
+          maxLength: 120
+          minLength: 3
+        firstMessage:
+          type: string
+          maxLength: 3000
+          minLength: 10
+      additionalProperties: false
+      required:
+      - sourceCode
+      - operationId
+      - correlationId
+      - externalStudentId
+      - categoryCode
+      - subject
+      - firstMessage
+    AppealOperationStatus:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        operationId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          minLength: 1
+        externalAppealId:
+          type: string
+        transportState:
+          type: string
+          enum:
+          - PENDING
+          - ACKNOWLEDGED
+          - UNKNOWN
+          - RETRYABLE_ERROR
+        appealStatus:
+          type:
+          - string
+          - 'null'
+          enum:
+          - OPEN
+          - null
+        alreadyProcessed:
+          type: boolean
+        sourceRevision:
+          type: string
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - sourceCode
+      - operationId
+      - correlationId
+      - transportState
+      - alreadyProcessed
+    MessageSubmitCommand:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        messageId:
+          type: string
+          minLength: 1
+        correlationId:
+          type: string
+          minLength: 1
+        externalAppealId:
+          type: string
+          minLength: 1
+        externalStudentId:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          maxLength: 3000
+          minLength: 1
+      additionalProperties: false
+      required:
+      - sourceCode
+      - messageId
+      - correlationId
+      - externalAppealId
+      - externalStudentId
+      - body
+      description: Идемпотентность по messageId, не генерировать новый при retry.
+    MessageOperationStatus:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        messageId:
+          type: string
+          minLength: 1
+        externalAppealId:
+          type: string
+          minLength: 1
+        transportState:
+          type: string
+          enum:
+          - PENDING
+          - ACKNOWLEDGED
+          - UNKNOWN
+          - RETRYABLE_ERROR
+        externalMessageId:
+          type: string
+        alreadyProcessed:
+          type: boolean
+        sourceRevision:
+          type: string
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - sourceCode
+      - messageId
+      - externalAppealId
+      - transportState
+      - alreadyProcessed
+    ExternalError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum:
+              - INVALID_SCOPE
+              - NOT_FOUND
+              - VALIDATION_ERROR
+              - AUTH_FAILED
+              - RATE_LIMITED
+              - SOURCE_REVISION_CHANGED
+              - TIMEOUT
+              - SOURCE_UNAVAILABLE
+              - IDEMPOTENCY_CONFLICT
+              - INVALID_RESPONSE
+            message:
+              type: string
+              minLength: 1
+            correlationId:
+              type: string
+          additionalProperties: false
+          required:
+          - code
+          - message
+      additionalProperties: false
+      required:
+      - error
+      description: Только безопасные ошибки, без секретов/внутренних URL.
+    GradingModel:
+      type: object
+      additionalProperties: false
+      properties:
+        ref:
+          $ref: '#/components/schemas/ExternalRef'
+        offeringId:
+          type: string
+          minLength: 1
+        modelLabel:
+          type: string
+          minLength: 1
+        modelCode:
+          type: string
+        description:
+          type: string
+      required:
+      - ref
+      - offeringId
+      - modelLabel
+    GradingModelRead:
+      type: object
+      properties:
+        sourceCode:
+          type: string
+          minLength: 1
+        requestedScope:
+          $ref: '#/components/schemas/RequestedScope'
+        availability:
+          $ref: '#/components/schemas/SourceAvailability'
+        isComplete:
+          type:
+          - boolean
+          - 'null'
+        fetchedAt:
+          type: string
+          format: date-time
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+        sourceRevision:
+          type: string
+        safeErrorCode:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GradingModel'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - sourceCode
+      - requestedScope
+      - availability
+      - isComplete
+      - fetchedAt
+      - items
+      description: Если availability=NO_DATA, обязательны пустые items и isComplete=true. При ERROR isComplete не
+        true. PARTIAL не может подтверждать отсутствие записей.
+      allOf:
+      - if:
+          properties:
+            availability:
+              const: NO_DATA
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: NOT_APPLICABLE
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: OK
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              minItems: 1
+            isComplete:
+              const: true
+      - if:
+          properties:
+            availability:
+              const: PARTIAL
+          required:
+          - availability
+        then:
+          properties:
+            isComplete:
+              enum:
+              - false
+              - null
+      - if:
+          properties:
+            availability:
+              const: ERROR
+          required:
+          - availability
+        then:
+          properties:
+            items:
+              maxItems: 0
+            isComplete:
+              enum:
+              - false
+              - null
+  parameters:
+    ExternalStudentId:
+      name: externalStudentId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    PeriodId:
+      name: periodId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    OfferingId:
+      name: offeringId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    UnitId:
+      name: unitId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    WorkId:
+      name: workId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    MaterialId:
+      name: materialId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    AnnouncementId:
+      name: announcementId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    ExternalAppealId:
+      name: externalAppealId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    MessageId:
+      name: messageId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    OperationId:
+      name: operationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    From:
+      name: from
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+    To:
+      name: to
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 2048
+        minLength: 1
+  responses:
+    '400':
+      description: Некорректный синтаксис
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalError'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    '401':
+      description: Неверная внутренняя аутентификация
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalError'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    '403':
+      description: Недопустимая доверенная область запроса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalError'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    '404':
+      description: Внешний объект не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalError'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    '409':
+      description: Конфликт ревизии или idempotency
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalError'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    '422':
+      description: Невалидная команда или область
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalError'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    '429':
+      description: Ограничение частоты
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalError'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    '502':
+      description: Недостоверный ответ fixture провайдера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalError'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    '503':
+      description: Недоступный источник
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalError'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
+    '504':
+      description: Время истекло
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalError'
+      headers:
+        Cache-Control:
+          description: Персональные и учебные ответы не кэшировать
+          schema:
+            type: string
+            const: private, no-store
+        Vary:
+          description: Изоляция cookie или внутреннего сервисного контекста
+          schema:
+            type: string
