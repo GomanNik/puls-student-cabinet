@@ -109,7 +109,7 @@ export type Attestation = z.infer<typeof AttestationSchema>;
 export const ResultsViewSchema = z.strictObject({"gradingModelLabel":z.string().optional(),"gradingState":DataStateSchema,"components":z.array(AssessmentComponentSchema),"componentsState":ListStatusSchema,"attestations":z.array(AttestationSchema),"attestationsState":ListStatusSchema,"officialResult":OfficialCourseResultSchema.optional(),"officialResultState":DataStateSchema});
 export type ResultsView = z.infer<typeof ResultsViewSchema>;
 
-export const TimelineEntrySchema = z.strictObject({"timelineKey":z.string().min(1).max(240),"eventKind":z.union([z.literal("ISSUED"),z.literal("DUE"),z.literal("COMPLETED"),z.literal("SUBMITTED"),z.literal("ASSESSED"),z.literal("REVIEWED"),z.literal("ACTUAL"),z.literal("ATTESTATION"),z.literal("PLANNED")]),"when":AcademicDateSchema,"title":z.string().min(1),"target":TargetSchema});
+export const TimelineEntrySchema = z.strictObject({"timelineKey":z.string().min(1).max(240),"eventKind":z.union([z.literal("ISSUED"),z.literal("DUE"),z.literal("COMPLETED"),z.literal("SUBMITTED"),z.literal("ASSESSED"),z.literal("REVIEWED"),z.literal("ACTUAL"),z.literal("ATTESTATION"),z.literal("PLANNED")]),"when":AcademicDateSchema.optional(),"resultState":DataStateSchema.optional(),"value":AssessmentValueSchema.optional(),"title":z.string().min(1),"target":TargetSchema});
 export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
 
 export const OfferingDetailSchema = z.strictObject({"offering":OfferingSummarySchema,"sessions":z.array(ScheduleDetailSchema),"sessionsState":ListStatusSchema,"works":z.array(WorkSummarySchema),"worksState":ListStatusSchema,"results":ResultsViewSchema,"materials":z.array(MaterialSchema),"materialsState":ListStatusSchema,"progressLines":z.strictObject({"activity":DataStateSchema,"completion":DataStateSchema,"results":DataStateSchema})});
@@ -139,7 +139,7 @@ export type ReadAllResult = z.infer<typeof ReadAllResultSchema>;
 export const DateTimeViewSchema = AcademicDateSchema;
 export type DateTimeView = z.infer<typeof DateTimeViewSchema>;
 
-export const CalendarItemSchema = z.strictObject({"eventKey":z.string().min(1).max(240),"origin":z.union([z.literal("UNIVERSITY_EVENT"),z.literal("ACADEMIC_DEADLINE"),z.literal("ATTESTATION")]),"title":z.string().min(1),"starts":AcademicDateSchema,"ends":AcademicDateSchema.optional(),"location":z.string().optional(),"target":TargetSchema.optional(),"description":z.string().optional()});
+export const CalendarItemSchema = z.strictObject({"eventKey":z.string().min(1).max(240),"origin":z.union([z.literal("UNIVERSITY_EVENT"),z.literal("ACADEMIC_DEADLINE"),z.literal("ATTESTATION")]),"title":z.string().min(1),"disciplineLabel":z.string().min(1).optional(),"starts":AcademicDateSchema,"ends":AcademicDateSchema.optional(),"location":z.string().optional(),"target":TargetSchema.optional(),"description":z.string().optional()});
 export type CalendarItem = z.infer<typeof CalendarItemSchema>;
 
 export const CalendarSelectionPreviewSchema = z.strictObject({"count":z.number().int().min(1),"selectionToken":z.string().min(20).max(512),"expiresAt":z.string().datetime({offset:true}),"filterSummary":z.strictObject({"from":z.string().date(),"to":z.string().date(),"eventKinds":z.array(z.union([z.literal("UNIVERSITY"),z.literal("ACADEMIC")])).min(1).max(2).refine(items => new Set(items.map(item => JSON.stringify(item))).size === items.length)})});

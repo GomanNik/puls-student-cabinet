@@ -217,12 +217,20 @@ export class LearningService {
   }
   async timeline(binding: LearningBinding) {
     const works = await this.works(binding), entries: TimelineEntry[] = [], errors: Slice<unknown>[] = [works];
+    const instant = (at?: string): AcademicDate | undefined => at ? { precision: "DATE_TIME", at, timeZone: this.port.timeZone } : undefined;
     const add = (id: string, eventKind: TimelineEntry["eventKind"], when: AcademicDate | undefined, title: string, target: TimelineEntry["target"]) => { if (when) entries.push({ timelineKey: this.id(binding, "timeline", `${id}:${eventKind}`), eventKind, when, title, target }); };
+    const addResult = (id: string, title: string, result: { state: DataState; value?: AssessmentValue; assessedAt?: string }, target: TimelineEntry["target"]) => {
+      // Ожидание или отсутствие сведений не доказывает выставление оценки.
+      // UNKNOWN с предметной датой сохраняет дату и неизвестность самого значения.
+      if (result.state !== "READY" && result.state !== "KNOWN_ZERO" && !(result.state === "UNKNOWN" && result.assessedAt)) return;
+      const when = instant(result.assessedAt);
+      entries.push({ timelineKey: this.id(binding, "timeline", `${id}:ASSESSED`), eventKind: "ASSESSED", title, target,
+        ...(when ? { when } : {}), resultState: result.state, ...(result.state !== "UNKNOWN" && result.value ? { value: result.value } : {}) });
+    };
     for (const work of works.items) {
       const detail = await this.workDetail(binding, this.id(binding, "work", work.workId)), target = detail.data.work.target;
       if (detail.meta.completeness !== true) errors.push({ items: [], state: "UNKNOWN", complete: false, errors: detail.meta.partialErrors ?? [] });
       add(work.workId, "ISSUED", work.issued, work.title, target); add(work.workId, "DUE", work.due, work.title, target);
-      const instant = (at?: string): AcademicDate | undefined => at ? { precision: "DATE_TIME", at, timeZone: this.port.timeZone } : undefined;
       add(work.workId, "COMPLETED", instant(detail.data.progress.completedAt), work.title, target); add(work.workId, "SUBMITTED", instant(detail.data.progress.submittedAt), work.title, target);
       add(work.workId, "REVIEWED", instant(detail.data.progress.reviewedAt), work.title, target);
       for (const result of detail.data.results) add(result.resultId, "ASSESSED", instant(result.assessedAt), work.title, target);
@@ -230,6 +238,14 @@ export class LearningService {
     }
     if (binding.kind === "OFFERING") {
       const results = await this.results(binding); errors.push(...results.slices);
+      const offeringTarget: TimelineEntry["target"] = { kind: "OFFERING", targetRef: binding.publicContext };
+      for (const component of results.data.components) {
+        // Связанные с работой результаты уже представлены в её хронологии.
+        // Без подтверждённой связи переход ведёт к дисциплине, а не к случайной работе.
+        if (!component.linkedWorkId) addResult(component.componentId, `Результат: ${component.label}`, component, offeringTarget);
+      }
+      const official = results.data.officialResult;
+      if (official) addResult(official.resultId, `${official.label}: ${binding.title}`, official, offeringTarget);
       for (const a of results.data.attestations) add(a.attestationId, "ATTESTATION", a.planned, `${a.kindLabel}: ${binding.title}`, { kind: "ATTESTATION", targetRef: a.attestationId });
       if (binding.period.startsOn && binding.period.endsOn) {
         let cursor: string | undefined;
@@ -249,10 +265,12 @@ export class LearningService {
       }
     }
     entries.sort((a, b) => {
+      // Подтверждённые результаты без даты идут отдельной группой после датированных.
+      if (!a.when || !b.when) return Number(!a.when) - Number(!b.when) || a.timelineKey.localeCompare(b.timelineKey);
       const dayA = a.when.on ?? localDay(a.when.at!, a.when.timeZone!), dayB = b.when.on ?? localDay(b.when.at!, b.when.timeZone!);
       return dayB.localeCompare(dayA) || (a.when.at && b.when.at ? Date.parse(b.when.at) - Date.parse(a.when.at) : Number(!!a.when.at) - Number(!!b.when.at)) || a.eventKind.localeCompare(b.eventKind) || a.timelineKey.localeCompare(b.timelineKey);
     });
-    return { items: entries, complete: errors.every(s => s.complete === true), slices: errors };
+    return { items: entries, complete: !this.context.partial && errors.every(s => s.complete === true), slices: errors };
   }
   async offeringDetail(binding: LearningBinding) {
     if (binding.kind !== "OFFERING") throw notFound();

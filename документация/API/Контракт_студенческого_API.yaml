@@ -3689,6 +3689,12 @@ components:
             - PLANNED
         when:
           $ref: '#/components/schemas/AcademicDate'
+          description: Предметная дата источника. При её отсутствии результат помещается после датированных записей с подписью «Дата не указана».
+        resultState:
+          $ref: '#/components/schemas/DataState'
+          description: Состояние результата; неизвестное значение не подменяется нулём.
+        value:
+          $ref: '#/components/schemas/AssessmentValue'
         title:
           type: string
           minLength: 1
@@ -3698,7 +3704,6 @@ components:
       required:
         - timelineKey
         - eventKind
-        - when
         - title
         - target
     OfferingDetail:
@@ -4050,6 +4055,10 @@ components:
         title:
           type: string
           minLength: 1
+        disciplineLabel:
+          type: string
+          minLength: 1
+          description: Название дисциплины из разрешённой связи с учебным предложением. Отсутствует у событий без подтверждённой дисциплины; не выводится из заголовка или аудитории события.
         starts:
           $ref: '#/components/schemas/AcademicDate'
         ends:

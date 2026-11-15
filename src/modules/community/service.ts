@@ -66,7 +66,7 @@ export class CommunityService {
   private async loadAcademic(){
     const learning=await this.learn(),items:C.CalendarItem[]=[];let complete=!learning.context.partial;
     for await(const binding of learning.bindings()){
-      try{const result=await learning.calendarFacts(binding);complete&&=result.complete;for(const fact of result.facts)items.push({eventKey:learning.context.id("calendar",fact.kind,fact.id),origin:fact.kind,title:fact.title,starts:fact.date,target:fact.target,...(fact.location?{location:fact.location}:{})});}
+      try{const result=await learning.calendarFacts(binding);complete&&=result.complete;for(const fact of result.facts)items.push({eventKey:learning.context.id("calendar",fact.kind,fact.id),origin:fact.kind,title:fact.title,...(binding.kind==="OFFERING"?{disciplineLabel:binding.title}:{}),starts:fact.date,target:fact.target,...(fact.location?{location:fact.location}:{})});}
       catch{complete=false;}
     }return {items,complete:complete&&!learning.context.partial,revision:learning.context.revision};
   }
