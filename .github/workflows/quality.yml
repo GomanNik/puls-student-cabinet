@@ -15,7 +15,7 @@ jobs:
       CI: 'true'
       NEXT_TELEMETRY_DISABLED: '1'
       APP_ORIGIN: https://localhost:3444
-      DATABASE_URL: postgresql://puls_ci@127.0.0.1:5432/puls_test
+      DATABASE_URL: postgresql://puls_web@127.0.0.1:5432/puls_test
       MIGRATION_DATABASE_URL: postgresql://puls_ci@127.0.0.1:5432/puls_test
       SESSION_COOKIE_NAME: __Host-puls_session
       PULS_AI_PROVIDER: DEMO_MOCK
@@ -52,12 +52,24 @@ jobs:
         shell: bash
         run: |
           umask 077
-          echo "AUTH_RATE_LIMIT_HMAC_KEY=$(openssl rand -base64 48 | tr -d '\n')" >> "$GITHUB_ENV"
-          echo "TRUSTED_PROXY_KEY=$(openssl rand -base64 48 | tr -d '\n')" >> "$GITHUB_ENV"
+          auth_key=$(openssl rand -base64 48 | tr -d '\n')
+          proxy_key=$(openssl rand -base64 48 | tr -d '\n')
+          echo "::add-mask::$auth_key"
+          echo "::add-mask::$proxy_key"
+          echo "AUTH_RATE_LIMIT_HMAC_KEY=$auth_key" >> "$GITHUB_ENV"
+          echo "TRUSTED_PROXY_KEY=$proxy_key" >> "$GITHUB_ENV"
           printf 'APP_ORIGIN=%s\nDATABASE_URL=%s\nMIGRATION_DATABASE_URL=%s\nSESSION_COOKIE_NAME=%s\nAUTH_RATE_LIMIT_HMAC_KEY=%s\nTRUSTED_PROXY_KEY=%s\n' \
             "$APP_ORIGIN" "$DATABASE_URL" "$MIGRATION_DATABASE_URL" "$SESSION_COOKIE_NAME" \
-            "$(grep '^AUTH_RATE_LIMIT_HMAC_KEY=' "$GITHUB_ENV" | tail -1 | cut -d= -f2-)" \
-            "$(grep '^TRUSTED_PROXY_KEY=' "$GITHUB_ENV" | tail -1 | cut -d= -f2-)" > .env.test.local
+            "$auth_key" "$proxy_key" > .env.test.local
+      - name: Create restricted runtime database role
+        run: |
+          docker exec -i "${{ job.services.postgres.id }}" psql -U puls_ci -d puls_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE puls_web LOGIN;
+          REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+          GRANT USAGE ON SCHEMA public TO puls_web;
+          ALTER DEFAULT PRIVILEGES FOR ROLE puls_ci IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO puls_web;
+          ALTER DEFAULT PRIVILEGES FOR ROLE puls_ci IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO puls_web;
+          SQL
       - name: Validate Prisma schema
         run: pnpm exec prisma validate
       - name: Apply migrations to puls_test
