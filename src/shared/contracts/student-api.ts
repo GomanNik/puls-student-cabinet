@@ -46,7 +46,7 @@ export type AcademicPeriod = z.infer<typeof AcademicPeriodSchema>;
 export const SubgroupAssignmentSchema = z.strictObject({"dataState":DataStateSchema,"subgroupId":z.string().min(1).max(240).optional(),"label":z.string().max(180).optional(),"appliesToOfferingId":z.string().min(1).max(240).optional()});
 export type SubgroupAssignment = z.infer<typeof SubgroupAssignmentSchema>;
 
-export const OfferingSummarySchema = z.strictObject({"kind":z.literal("OFFERING"),"offeringId":z.string().min(1).max(240),"periodId":z.string().min(1).max(240),"title":z.string().min(1),"attestationLabel":z.string().optional(),"subgroup":SubgroupAssignmentSchema,"target":TargetSchema});
+export const OfferingSummarySchema = z.strictObject({"kind":z.literal("OFFERING"),"offeringId":z.string().min(1).max(240),"periodId":z.string().min(1).max(240),"title":z.string().min(1),"teacherLabel":z.string().min(1).optional(),"attestationLabel":z.string().optional(),"subgroup":SubgroupAssignmentSchema,"target":TargetSchema});
 export type OfferingSummary = z.infer<typeof OfferingSummarySchema>;
 
 export const IndependentUnitSummarySchema = z.strictObject({"kind":z.literal("INDEPENDENT_UNIT"),"unitId":z.string().min(1).max(240),"periodId":z.string().min(1).max(240),"title":z.string().min(1),"unitTypeLabel":z.string().optional(),"target":TargetSchema});
@@ -187,7 +187,7 @@ export type ResolveOperationRequest = z.infer<typeof ResolveOperationRequestSche
 export const ResolveOperationResultSchema = z.strictObject({"state":z.union([z.literal("COMMITTED"),z.literal("PENDING"),z.literal("NOT_FOUND"),z.literal("EXPIRED")]),"target":TargetSchema.optional(),"operationScope":z.union([z.literal("CREATE_REQUEST"),z.literal("CREATE_APPEAL"),z.literal("CREATE_APPEAL_MESSAGE")])});
 export type ResolveOperationResult = z.infer<typeof ResolveOperationResultSchema>;
 
-export const AssistantQuestionSchema = z.strictObject({"message":z.string().min(1).max(4000),"contextHint":z.union([z.literal("GENERAL"),z.literal("SCHEDULE"),z.literal("STUDY"),z.literal("DEADLINES"),z.literal("MATERIALS"),z.literal("REQUESTS"),z.literal("APPEALS"),z.literal("CALENDAR"),z.literal("NOTIFICATIONS")]).optional()});
+export const AssistantQuestionSchema = z.strictObject({"message":z.string().min(1).max(4000),"history":z.array(z.strictObject({"role":z.union([z.literal("user"),z.literal("assistant")]),"content":z.string().min(1).max(2000)})).max(8).optional(),"contextHint":z.union([z.literal("GENERAL"),z.literal("SCHEDULE"),z.literal("STUDY"),z.literal("DEADLINES"),z.literal("MATERIALS"),z.literal("REQUESTS"),z.literal("APPEALS"),z.literal("CALENDAR"),z.literal("NOTIFICATIONS")]).optional()});
 export type AssistantQuestion = z.infer<typeof AssistantQuestionSchema>;
 
 export const AssistantAnswerSchema = z.strictObject({"text":z.string().min(1),"providerMode":z.union([z.literal("GIGACHAT"),z.literal("DEMO_MOCK")]),"completeness":z.union([z.literal("COMPLETE"),z.literal("PARTIAL"),z.literal("UNKNOWN")]),"targets":z.array(TargetSchema).max(10),"notice":z.string().optional()});

@@ -7,11 +7,15 @@ datasource db {
   provider = "postgresql"
 }
 
+// CHECK, частичные индексы worker, триггеры и GRANT/REVOKE заданы SQL-миграциями.
+// Эта схема не заменяет их; развёртывание выполняется через migrate deploy.
+
 model ServiceConcurrencyLease {
-  leaseId String @id @default(uuid()) @map("lease_id") @db.Uuid
+  leaseId String @id @default(dbgenerated("gen_random_uuid()")) @map("lease_id") @db.Uuid
   accountId String @map("account_id") @db.Uuid
   scopeCode String @map("scope_code")
   expiresAt DateTime @map("expires_at") @db.Timestamptz
+  account StudentAccount @relation(fields: [accountId], references: [accountId], onDelete: Restrict, onUpdate: NoAction)
   @@unique([accountId, scopeCode])
   @@map("service_concurrency_lease")
   @@index([expiresAt], map: "service_lease_expiry_idx")
@@ -28,6 +32,12 @@ model StudentAccount {
   sessions            AuthSession[]
   profile             StudentProfile?
   identities          StudentExternalIdentity[]
+  serviceLeases       ServiceConcurrencyLease[]
+  requests            StudentRequest[]
+  appeals             StudentAppeal[]
+  messages            AppealMessage[]
+  notificationStates  StudentNotificationState[]
+  idempotencyRecords  IdempotencyRecord[]
   @@map("student_account")
 }
 
@@ -126,19 +136,20 @@ model StudentExternalIdentity {
 }
 
 model RequestTypeCatalog {
-  requestTypeId String @id @default(uuid()) @map("request_type_id") @db.Uuid
+  requestTypeId String @id @default(dbgenerated("gen_random_uuid()")) @map("request_type_id") @db.Uuid
   requestKindCode String @map("request_kind_code")
   requestTypeCode String @map("request_type_code")
   displayName String @map("display_name")
   description String? @map("description")
   formSchemaVersion String @map("form_schema_version")
   isAvailable Boolean @default(true) @map("is_available")
+  requests StudentRequest[]
   @@map("request_type_catalog")
   @@unique([requestTypeCode])
 }
 
 model StudentRequest {
-  requestId String @id @default(uuid()) @map("request_id") @db.Uuid
+  requestId String @id @default(dbgenerated("gen_random_uuid()")) @map("request_id") @db.Uuid
   ownerAccountId String @map("owner_account_id") @db.Uuid
   requestTypeId String @map("request_type_id") @db.Uuid
   formSchemaVersion String @map("form_schema_version")
@@ -149,12 +160,16 @@ model StudentRequest {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  owner StudentAccount @relation(fields: [ownerAccountId], references: [accountId], onDelete: Restrict, onUpdate: NoAction)
+  requestType RequestTypeCatalog @relation(fields: [requestTypeId], references: [requestTypeId], onDelete: NoAction, onUpdate: NoAction)
+  operations RequestExternalOperation[]
+  transitions RequestStateTransition[]
   @@map("student_request")
   @@index([ownerAccountId, createdAt(sort: Desc), requestId], map: "request_owner_idx")
 }
 
 model StudentAppeal {
-  appealId String @id @default(uuid()) @map("appeal_id") @db.Uuid
+  appealId String @id @default(dbgenerated("gen_random_uuid()")) @map("appeal_id") @db.Uuid
   ownerAccountId String @map("owner_account_id") @db.Uuid
   categoryCode String @map("category_code")
   subject String @map("subject")
@@ -164,6 +179,10 @@ model StudentAppeal {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  owner StudentAccount @relation(fields: [ownerAccountId], references: [accountId], onDelete: Restrict, onUpdate: NoAction)
+  messages AppealMessage[] @relation("AppealMessages")
+  studentMessages AppealMessage[] @relation("AppealMessageOwner")
+  operations AppealExternalOperation[]
   @@map("student_appeal")
   @@unique([appealId, ownerAccountId])
   @@index([ownerAccountId, createdAt(sort: Desc), appealId], map: "appeal_owner_idx")
@@ -171,7 +190,7 @@ model StudentAppeal {
 }
 
 model AppealMessage {
-  messageId String @id @default(uuid()) @map("message_id") @db.Uuid
+  messageId String @id @default(dbgenerated("gen_random_uuid()")) @map("message_id") @db.Uuid
   appealId String @map("appeal_id") @db.Uuid
   senderKindCode String @map("sender_kind_code")
   senderAccountId String? @map("sender_account_id") @db.Uuid
@@ -182,6 +201,10 @@ model AppealMessage {
   sourceCreatedAt DateTime? @map("source_created_at") @db.Timestamptz
   externalMessageId String? @map("external_message_id")
   sourceCode String? @map("source_code")
+  appeal StudentAppeal @relation("AppealMessages", fields: [appealId], references: [appealId], onDelete: NoAction, onUpdate: NoAction)
+  sender StudentAccount? @relation(fields: [senderAccountId], references: [accountId], onDelete: NoAction, onUpdate: NoAction)
+  ownerAppeal StudentAppeal? @relation("AppealMessageOwner", fields: [appealId, senderAccountId], references: [appealId, ownerAccountId], onDelete: NoAction, onUpdate: NoAction)
+  deliveries MessageDeliveryOperation[]
   @@map("appeal_message")
   @@unique([appealId, sequenceNumber])
   @@unique([sourceCode, externalMessageId])
@@ -190,7 +213,7 @@ model AppealMessage {
 
 model RequestExternalOperation {
   lastSourceUpdatedAt DateTime? @map("last_source_updated_at") @db.Timestamptz
-  operationId String @id @default(uuid()) @map("operation_id") @db.Uuid
+  operationId String @id @default(dbgenerated("gen_random_uuid()")) @map("operation_id") @db.Uuid
   requestId String @map("request_id") @db.Uuid
   sourceCode String @map("source_code")
   operationKindCode String @map("operation_kind_code")
@@ -207,13 +230,15 @@ model RequestExternalOperation {
   lastSeenSourceRevision String? @map("last_seen_source_revision")
   leaseUntil DateTime? @map("lease_until") @db.Timestamptz
   leaseToken String? @map("lease_token") @db.Uuid
+  request StudentRequest @relation(fields: [requestId], references: [requestId], onDelete: NoAction, onUpdate: NoAction)
+  attempts RequestExternalAttempt[]
   @@map("request_external_operation")
   @@unique([requestId, sourceCode, operationKindCode])
   @@unique([sourceCode, externalOperationId])
 }
 
 model RequestExternalAttempt {
-  attemptId String @id @default(uuid()) @map("attempt_id") @db.Uuid
+  attemptId String @id @default(dbgenerated("gen_random_uuid()")) @map("attempt_id") @db.Uuid
   operationId String @map("operation_id") @db.Uuid
   attemptNumber Int @map("attempt_number")
   startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz
@@ -221,12 +246,13 @@ model RequestExternalAttempt {
   outcomeCode String @map("outcome_code")
   errorCode String? @map("error_code")
   safeErrorSummary String? @map("safe_error_summary")
+  operation RequestExternalOperation @relation(fields: [operationId], references: [operationId], onDelete: NoAction, onUpdate: NoAction)
   @@map("request_external_attempt")
   @@unique([operationId, attemptNumber])
 }
 
 model AppealExternalOperation {
-  operationId String @id @default(uuid()) @map("operation_id") @db.Uuid
+  operationId String @id @default(dbgenerated("gen_random_uuid()")) @map("operation_id") @db.Uuid
   appealId String @map("appeal_id") @db.Uuid
   sourceCode String @map("source_code")
   operationKindCode String @map("operation_kind_code")
@@ -245,6 +271,8 @@ model AppealExternalOperation {
   lastSeenSourceRevision String? @map("last_seen_source_revision")
   leaseUntil DateTime? @map("lease_until") @db.Timestamptz
   leaseToken String? @map("lease_token") @db.Uuid
+  appeal StudentAppeal @relation(fields: [appealId], references: [appealId], onDelete: NoAction, onUpdate: NoAction)
+  attempts AppealExternalAttempt[]
   @@map("appeal_external_operation")
   @@unique([appealId, sourceCode, operationKindCode])
   @@unique([sourceCode, externalOperationId])
@@ -252,7 +280,7 @@ model AppealExternalOperation {
 }
 
 model AppealExternalAttempt {
-  attemptId String @id @default(uuid()) @map("attempt_id") @db.Uuid
+  attemptId String @id @default(dbgenerated("gen_random_uuid()")) @map("attempt_id") @db.Uuid
   operationId String @map("operation_id") @db.Uuid
   attemptNumber Int @map("attempt_number")
   startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz
@@ -260,12 +288,13 @@ model AppealExternalAttempt {
   outcomeCode String @map("outcome_code")
   errorCode String? @map("error_code")
   safeErrorSummary String? @map("safe_error_summary")
+  operation AppealExternalOperation @relation(fields: [operationId], references: [operationId], onDelete: NoAction, onUpdate: NoAction)
   @@map("appeal_external_attempt")
   @@unique([operationId, attemptNumber])
 }
 
 model RequestStateTransition {
-  transitionId String @id @default(uuid()) @map("transition_id") @db.Uuid
+  transitionId String @id @default(dbgenerated("gen_random_uuid()")) @map("transition_id") @db.Uuid
   requestId String @map("request_id") @db.Uuid
   stateDimensionCode String @map("state_dimension_code")
   fromStateCode String? @map("from_state_code")
@@ -274,13 +303,14 @@ model RequestStateTransition {
   changeSourceCode String @map("change_source_code")
   reasonCode String? @map("reason_code")
   eventOccurrenceKey String @map("event_occurrence_key")
+  request StudentRequest @relation(fields: [requestId], references: [requestId], onDelete: NoAction, onUpdate: NoAction)
   @@map("request_state_transition")
   @@unique([requestId, stateDimensionCode, eventOccurrenceKey])
   @@index([requestId, changedAt, transitionId], map: "request_transition_history_idx")
 }
 
 model MessageDeliveryOperation {
-  deliveryOperationId String @id @default(uuid()) @map("delivery_operation_id") @db.Uuid
+  deliveryOperationId String @id @default(dbgenerated("gen_random_uuid()")) @map("delivery_operation_id") @db.Uuid
   messageId String @map("message_id") @db.Uuid
   sourceCode String @map("source_code")
   remoteIdempotencyKey String @map("remote_idempotency_key")
@@ -292,6 +322,8 @@ model MessageDeliveryOperation {
   lastErrorCode String? @map("last_error_code")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  message AppealMessage @relation(fields: [messageId], references: [messageId], onDelete: NoAction, onUpdate: NoAction)
+  attempts MessageDeliveryAttempt[]
   @@map("message_delivery_operation")
   @@unique([messageId, sourceCode])
   @@unique([sourceCode, remoteIdempotencyKey])
@@ -300,7 +332,7 @@ model MessageDeliveryOperation {
 }
 
 model MessageDeliveryAttempt {
-  deliveryAttemptId String @id @default(uuid()) @map("delivery_attempt_id") @db.Uuid
+  deliveryAttemptId String @id @default(dbgenerated("gen_random_uuid()")) @map("delivery_attempt_id") @db.Uuid
   messageId String @map("message_id") @db.Uuid
   sourceCode String @map("source_code")
   attemptNumber Int @map("attempt_number")
@@ -310,6 +342,7 @@ model MessageDeliveryAttempt {
   externalMessageId String? @map("external_message_id")
   errorCode String? @map("error_code")
   safeErrorSummary String? @map("safe_error_summary")
+  operation MessageDeliveryOperation @relation(fields: [messageId, sourceCode], references: [messageId, sourceCode], onDelete: NoAction, onUpdate: NoAction)
   @@map("message_delivery_attempt")
   @@unique([messageId, sourceCode, attemptNumber])
 }
@@ -321,13 +354,14 @@ model StudentNotificationState {
   categoryCode String @map("category_code")
   eventOccurrenceKey String @map("event_occurrence_key")
   readAt DateTime @default(now()) @map("read_at") @db.Timestamptz
+  account StudentAccount @relation(fields: [accountId], references: [accountId], onDelete: NoAction, onUpdate: NoAction)
   @@map("student_notification_state")
   @@id([accountId, sourceKindCode, sourceRef, categoryCode, eventOccurrenceKey])
   @@index([accountId, readAt(sort: Desc)], map: "notification_account_idx")
 }
 
 model IdempotencyRecord {
-  idempotencyRecordId String @id @default(uuid()) @map("idempotency_record_id") @db.Uuid
+  idempotencyRecordId String @id @default(dbgenerated("gen_random_uuid()")) @map("idempotency_record_id") @db.Uuid
   accountId String @map("account_id") @db.Uuid
   operationScopeCode String @map("operation_scope_code")
   keyDigest Bytes @map("key_digest")
@@ -335,7 +369,8 @@ model IdempotencyRecord {
   resultKind String @map("result_kind")
   resultId String @map("result_id")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  expiresAt DateTime @default(now()) @map("expires_at") @db.Timestamptz
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  account StudentAccount @relation(fields: [accountId], references: [accountId], onDelete: NoAction, onUpdate: NoAction)
   @@map("idempotency_record")
   @@unique([accountId, operationScopeCode, keyDigest])
   @@index([expiresAt], map: "idempotency_expiry_idx")

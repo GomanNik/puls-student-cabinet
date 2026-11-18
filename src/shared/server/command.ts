@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import type { AuthContext } from "@/modules/auth/context";
+import { clientSessionScope, type AuthContext } from "@/modules/auth/context";
 import { authService } from "@/modules/auth/http-handlers";
 import { readConfig } from "./config";
 import { enforceOrigin, enforceTransport, errorResponse, privateHeaders, readBody, readToken, parseStrictJson, jsonContent } from "./http";
@@ -24,7 +24,7 @@ export function commandRoute<I, O>(input: z.ZodType<I>, output: z.ZodType<O>, ac
       const code=path.includes("/notifications/read")?"NOTIFICATION_READ":null;
       if(code)await securityAudit(code,{requestId,accountId:auth.accountId});
       await authService().requireSession(readToken(request), requestId);
-      return NextResponse.json(output.parse(result.body), { status: result.status ?? 200, headers: { ...privateHeaders, ...(result.location ? { Location: result.location } : {}) } });
+      return NextResponse.json(output.parse(result.body), { status: result.status ?? 200, headers: { ...privateHeaders, "X-Puls-Session-Scope": clientSessionScope(auth), ...(result.location ? { Location: result.location } : {}) } });
     } catch (error) { if(new URL(request.url).pathname==="/api/v1/assistant/ask")await securityAudit("ASSISTANT_BLOCKED",{requestId,target:"ASSISTANT"});return errorResponse(error, requestId); }
   };
 }

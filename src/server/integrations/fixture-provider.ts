@@ -32,7 +32,7 @@ export class FixtureAcademicProvider implements AcademicContextPort, SchedulePor
     const requestedScope = { externalStudentId: scope.externalStudentId, ...(scope.periodId ? { periodId: scope.periodId } : {}), ...(scope.offeringId ? { offeringId: scope.offeringId } : {}), ...(scope.unitId ? { unitId: scope.unitId } : {}) };
     const result = schema.safeParse({ sourceCode: SOURCE, requestedScope, items: failed || noData || notApplicable ? [] : partial ? items.slice(0, 1) : items,
       availability: failed ? "ERROR" : partial ? "PARTIAL" : notApplicable ? "NOT_APPLICABLE" : noData ? "NO_DATA" : items.length ? "OK" : dataset === "grading" ? "NOT_APPLICABLE" : "NO_DATA", isComplete: !failed && !partial,
-      fetchedAt: new Date().toISOString(), sourceUpdatedAt: "2026-11-13T00:00:00Z", sourceRevision: this.revision,
+      fetchedAt: new Date().toISOString(), sourceUpdatedAt: "2026-11-18T00:00:00Z", sourceRevision: this.revision,
       ...(failed ? { safeErrorCode: "SOURCE_UNAVAILABLE" } : {}) });
     if (!result.success) throw new AppError(502, "EXTERNAL_INVALID_RESPONSE", "Не удалось прочитать учебные сведения.");
     return result.data;

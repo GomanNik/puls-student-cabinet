@@ -15,7 +15,17 @@ import { securityAudit } from "@/shared/server/security-audit";
 type Read<T> = { sourceCode: string; requestedScope: RequestedScope; availability: SourceAvailability; isComplete: boolean | null; items: T[]; sourceRevision?: string };
 type Slice<T> = { items: T[]; state: DataState; complete: boolean | null; errors: PartialError[]; dataset?: PartialError["dataset"] };
 export type LearningBinding = { period: AcademicPeriod; source: SourceLearningScope; publicPeriod: string; publicContext: string; title: string; kind: "OFFERING" | "INDEPENDENT_UNIT" };
-export type WorkSelection = { filter: "ALL" | "DUE" | "RESULT"; sort: "DUE" | "ISSUED" | "TITLE"; query: string };
+export type WorkSelection = { filter: "ALL" | "DUE" | "RESULT" | "REVIEW"; sort: "DUE" | "ISSUED" | "TITLE"; query: string };
+const SEARCH_STOP_WORDS = new Set(["по", "для", "в", "на", "и", "из", "к", "с", "у", "о", "об", "про", "мне", "пожалуйста", "найди", "найти", "поищи", "покажи", "открой", "дисциплину", "дисциплины", "предмет", "предметы"]);
+function searchTokens(value: string) {
+  return (value.normalize("NFKC").toLocaleLowerCase("ru-RU").replaceAll("ё", "е").match(/[а-яa-z0-9]+/gu) ?? [])
+    .filter(token => !SEARCH_STOP_WORDS.has(token))
+    .map(token => token.length >= 6 && !/^\d+$/u.test(token) ? token.slice(0, 5) : token);
+}
+function searchTextMatches(value: string, tokens: string[]) {
+  const normalized = value.normalize("NFKC").toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
+  return tokens.length > 0 && tokens.every(token => normalized.includes(token));
+}
 const listStatus = <T>(slice: Slice<T>): ListStatus => ({ dataState: slice.state, isComplete: slice.complete, nextCursor: null });
 const unknownProgress = (): WorkProgress => ({ dataState: "UNKNOWN" });
 export class LearningService {
@@ -107,7 +117,7 @@ export class LearningService {
       results.push(read); if (read.items.length) resultIds.add(work.workId);
     }
     const normalized = selection?.query.normalize("NFKC").toLocaleLowerCase("ru-RU").trim();
-    const items = slice.items.filter(w => (!normalized || w.title.normalize("NFKC").toLocaleLowerCase("ru-RU").includes(normalized)) && (selection?.filter !== "DUE" || !!w.due) && (selection?.filter !== "RESULT" || resultIds.has(w.workId)))
+    const items = slice.items.filter(w => (!normalized || w.title.normalize("NFKC").toLocaleLowerCase("ru-RU").includes(normalized)) && (selection?.filter !== "DUE" || !!w.due) && (selection?.filter !== "RESULT" || resultIds.has(w.workId)) && (selection?.filter !== "REVIEW" || !!progress.items.find(p => p.workId === w.workId && p.submittedAt && !p.reviewedAt && !p.reviewStatusCode)))
       .map(w => this.workSummary(binding, w, progress.items.find(p => p.workId === w.workId), progress.state));
     const dateKey = (date?: AcademicDate) => date?.on ?? (date?.at && date.timeZone ? localDay(date.at, date.timeZone) : undefined);
     items.sort((a, b) => {
@@ -233,7 +243,7 @@ export class LearningService {
       add(work.workId, "ISSUED", work.issued, work.title, target); add(work.workId, "DUE", work.due, work.title, target);
       add(work.workId, "COMPLETED", instant(detail.data.progress.completedAt), work.title, target); add(work.workId, "SUBMITTED", instant(detail.data.progress.submittedAt), work.title, target);
       add(work.workId, "REVIEWED", instant(detail.data.progress.reviewedAt), work.title, target);
-      for (const result of detail.data.results) add(result.resultId, "ASSESSED", instant(result.assessedAt), work.title, target);
+      for (const result of detail.data.results) addResult(result.resultId, work.title, { state: "READY", value: result.value, assessedAt: result.assessedAt }, target);
       for (const stage of detail.data.stages) { add(stage.stageId, "DUE", stage.due, `${work.title}: ${stage.title}`, target); add(stage.stageId, "COMPLETED", instant(stage.progress?.completedAt), stage.title, target); add(stage.stageId, "SUBMITTED", instant(stage.progress?.submittedAt), stage.title, target); add(stage.stageId, "REVIEWED", instant(stage.progress?.reviewedAt), stage.title, target); }
     }
     if (binding.kind === "OFFERING") {
@@ -315,14 +325,26 @@ export class LearningService {
     return { data: { unit: this.unitSummary(binding.period, unit), works, worksState: listStatus(slice), results: works.flatMap(w => w.results), materials: materials.items, attestations: [], timeline: timeline.items, timelineState: { dataState: timeline.items.length ? "READY" as const : timeline.complete ? "EMPTY_CONFIRMED" as const : "UNKNOWN" as const, isComplete: timeline.complete, nextCursor: null } }, meta: this.meta([...slices, ...timeline.slices, materials.slice]) };
   }
   async search(text: string, limit: number) {
-    const normalized = text.normalize("NFKC").toLocaleLowerCase("ru-RU").trim(), items: { item: AcademicSearchResult; rank: number }[] = [];
+    const normalized = text.normalize("NFKC").toLocaleLowerCase("ru-RU").replaceAll("ё", "е").trim();
+    const tokens = searchTokens(normalized);
+    const items: { item: AcademicSearchResult; rank: number }[] = [];
     const slices: Slice<unknown>[] = [];
     for await (const binding of this.bindings()) {
       const current = this.context.currentPeriod()?.periodId === binding.period.periodId;
       const base = { periodId: binding.publicPeriod, periodLabel: binding.period.label };
-      if (binding.kind === "OFFERING" && binding.title.toLocaleLowerCase("ru-RU").includes(normalized)) items.push({ item: { ...base, kind: "OFFERING", title: binding.title, targetRef: binding.publicContext }, rank: current ? 0 : 2 });
+      if (binding.kind === "OFFERING" && (binding.title.toLocaleLowerCase("ru-RU").replaceAll("ё", "е").includes(normalized) || searchTextMatches(binding.title, tokens))) {
+        items.push({ item: { ...base, kind: "OFFERING", title: binding.title, targetRef: binding.publicContext }, rank: current ? 0 : 2 });
+      }
       const works = await this.works(binding); slices.push(works);
-      for (const work of works.items) if (work.title.normalize("NFKC").toLocaleLowerCase("ru-RU").includes(normalized)) items.push({ item: { ...base, kind: "WORK", title: work.title, disciplineLabel: binding.title, targetRef: this.id(binding, "work", work.workId) }, rank: current ? 1 : 3 });
+      for (const work of works.items) {
+        const title = work.title.normalize("NFKC").toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
+        const exact = title.includes(normalized);
+        const titleMatches = searchTextMatches(work.title, tokens);
+        const relatedMatches = tokens.length > 0 && tokens.some(token => title.includes(token)) && searchTextMatches(`${work.title} ${binding.title}`, tokens);
+        if (exact || titleMatches || relatedMatches) {
+          items.push({ item: { ...base, kind: "WORK", title: work.title, disciplineLabel: binding.title, targetRef: this.id(binding, "work", work.workId) }, rank: current ? 1 : 3 });
+        }
+      }
     }
     items.sort((a, b) => a.rank - b.rank || a.item.title.localeCompare(b.item.title, "ru-RU") || a.item.targetRef.localeCompare(b.item.targetRef));
     const meta = this.meta(slices);

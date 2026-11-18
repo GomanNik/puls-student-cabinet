@@ -50,7 +50,7 @@ export type ContextRecord = z.infer<typeof ContextRecordSchema>;
 export const AssignmentSchema = z.strictObject({"ref":ExternalRefSchema,"externalStudentId":z.string().min(1),"periodId":z.string().min(1),"offeringId":z.string().min(1),"subgroupId":z.string().min(1),"subgroupLabel":z.string().min(1),"isOfficial":z.literal(true)});
 export type Assignment = z.infer<typeof AssignmentSchema>;
 
-export const OfferingSchema = z.strictObject({"ref":ExternalRefSchema,"periodId":z.string().min(1),"offeringId":z.string().min(1),"title":z.string().min(1),"groupId":z.string().optional(),"membershipRef":ExternalRefSchema,"gradingModelRef":ExternalRefSchema.optional()});
+export const OfferingSchema = z.strictObject({"ref":ExternalRefSchema,"periodId":z.string().min(1),"offeringId":z.string().min(1),"title":z.string().min(1),"teacherLabel":z.string().min(1).optional(),"groupId":z.string().optional(),"membershipRef":ExternalRefSchema,"gradingModelRef":ExternalRefSchema.optional()});
 export type Offering = z.infer<typeof OfferingSchema>;
 
 export const AcademicUnitSchema = z.strictObject({"ref":ExternalRefSchema,"unitId":z.string().min(1),"periodId":z.string().min(1),"title":z.string().min(1),"unitTypeLabel":z.string().min(1),"audiences":z.array(AudienceSchema).min(1)});

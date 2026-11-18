@@ -1,64 +1,96 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { CalendarSearch, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { z } from "zod";
-import { api, safeClientMessage } from "@/shared/api/client";
 import { useRemote } from "@/shared/api/use-remote";
+import { profileResponseSchema } from "@/shared/contracts/auth";
 import { ScheduleListResponseSchema, type ScheduleEntry } from "@/shared/contracts/student-api";
-import { addDays, formatDay, localDay, weekStart } from "@/shared/lib/dates";
+import { addDays, formatDay, formatTime, localDay, weekStart } from "@/shared/lib/dates";
 import { Button } from "@/shared/ui/button";
+import { PageHero } from "@/shared/ui/page-hero";
 import { RemoteState } from "@/shared/ui/remote-state";
-import { ScheduleCard } from "@/shared/ui/schedule-card";
 import { ScheduleDetailPanel } from "@/modules/schedule/detail-panel";
 
-function ScheduleData({ from, to, view, open }: { from: string; to: string; view: string; open: (id: string) => string }) {
-  const path = `/schedule?from=${from}&to=${to}&limit=100`;
-  const { state, reload, setState } = useRemote(path, ScheduleListResponseSchema);
-  const [moreError, setMoreError] = useState<string | null>(null), [busy, setBusy] = useState(false);
-  const pending = useRef<AbortController | null>(null);
-  useEffect(() => () => pending.current?.abort(), []);
-  if (state.kind !== "ready") return <RemoteState state={state} retry={reload} />;
-  const { data, meta } = state.value;
-  const days = Array.from({ length: view === "week" ? 7 : 1 }, (_, i) => addDays(from, i));
-  function overlapping(entry: ScheduleEntry, items: ScheduleEntry[]) {
-    if (!entry.plannedStart || !entry.plannedEnd || entry.status === "CANCELLED") return false;
-    return items.some(other => other.scheduleId !== entry.scheduleId && other.status !== "CANCELLED" && other.plannedStart && other.plannedEnd && Date.parse(entry.plannedStart!) < Date.parse(other.plannedEnd) && Date.parse(other.plannedStart) < Date.parse(entry.plannedEnd!));
-  }
-  async function more() {
-    if (!data.nextCursor || busy) return;
-    const controller = new AbortController(); pending.current = controller; setBusy(true); setMoreError(null);
-    try {
-      const next = await api(`${path}&cursor=${encodeURIComponent(data.nextCursor)}`, ScheduleListResponseSchema, { signal: controller.signal });
-      if (!controller.signal.aborted) setState({ kind: "ready", value: { ...next, data: { ...next.data, items: [...data.items, ...next.data.items] } } });
-    } catch (error) { if (!controller.signal.aborted) setMoreError(safeClientMessage(error)); }
-    finally { if (!controller.signal.aborted) setBusy(false); }
-  }
+const dayName = (day: string) => new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", weekday: "long" }).format(new Date(`${day}T12:00:00Z`));
+const compactDate = (day: string) => new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", day: "numeric", month: "long" }).format(new Date(`${day}T12:00:00Z`));
+const normalize = (value: string) => value.trim().toLocaleLowerCase("ru-RU");
+
+function Lesson({ entry, href }: { entry: ScheduleEntry; href: string }) {
+  const start = entry.plannedStart && entry.timeZone ? formatTime(entry.plannedStart, entry.timeZone) : "—";
+  const end = entry.plannedEnd && entry.timeZone ? formatTime(entry.plannedEnd, entry.timeZone) : "Время не указано";
+  return <Link id={`lesson-${entry.scheduleId}`} className="agenda-lesson" href={href} prefetch={false}>
+    <span className="agenda-lesson-time"><strong>{start}</strong><small>{end}</small></span>
+    <span className="agenda-lesson-copy"><strong>{entry.title}</strong><span className="agenda-lesson-tags">
+      <i>{entry.lessonType ?? "Тип не указан"}</i>
+      <i>{entry.subgroupLabel ?? "Вся группа"}</i>
+      {entry.status === "RESCHEDULED" && <i>Перенесено</i>}
+    </span></span>
+    <span className="agenda-lesson-meta"><strong>{entry.room ? `Ауд. ${entry.room}` : "Аудитория не указана"}</strong><span>{entry.teacherLabel ?? "Преподаватель не указан"}</span></span>
+    <ChevronRight className="agenda-lesson-arrow" size={17} aria-hidden="true" />
+  </Link>;
+}
+
+function ScheduleData({ from, to, today, navigate, open }: { from: string; to: string; today: string; navigate: (day: string) => void; open: (id: string) => string }) {
+  const [mode, setMode] = useState<"group" | "teacher" | "room">("group");
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<string | null>(null);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const path = query.trim() || selected ? `/schedule?from=${from}&to=${to}&limit=20` : null;
+  const { state, reload } = useRemote(path, ScheduleListResponseSchema, true);
+  const { state: profileState } = useRemote("/profile", profileResponseSchema);
+  const group = profileState.kind === "ready" ? profileState.value.data.group : null;
+
+  const schedule = state.kind === "ready" ? state.value : null;
+  const active = schedule?.data.items.filter(item => item.status !== "CANCELLED") ?? [];
+  const teachers = [...new Set(active.map(item => item.teacherLabel).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, "ru"));
+  const rooms = [...new Set(active.map(item => item.room).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, "ru"));
+  const labels = { group: "Группа", teacher: "Преподаватель", room: "Аудитория" };
+  const choices = mode === "group" ? (group ? [group] : []) : mode === "teacher" ? teachers : rooms;
+  const search = normalize(query);
+  const suggestions = choices.filter(value => normalize(value).includes(search)).slice(0, 8);
+  const filtered = selected ? active.filter(item => mode === "group" ? selected === group : mode === "teacher" ? item.teacherLabel === selected : item.room === selected) : [];
+  const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
+  const reset = () => { setQuery(""); setSelected(null); setSuggestionsOpen(false); };
+
   return <>
-    {meta.sourceStatus === "PARTIAL" && <div className="notice notice-warning" role="status"><strong>Показаны подтверждённые сведения</strong><p>{meta.partialErrors?.some(e => e.dataset === "CONTEXT") ? "Не удалось однозначно определить официальную подгруппу для части дисциплин. Для них показаны только занятия всей группы." : "Часть сведений или история изменений недоступна. Пустой список не подтверждает отсутствие занятий."}</p></div>}
-    <div className={view === "week" ? "schedule-week" : "schedule-day"}>{days.map(day => {
-      const items = data.items.filter(item => item.plannedStart && item.timeZone && localDay(item.plannedStart, item.timeZone) === day);
-      return <section key={day} className="schedule-date" id={`day-${day}`} aria-labelledby={`date-${day}`}><h2 id={`date-${day}`}>{formatDay(day, true)}</h2>{items.length ? <div className="lesson-list">{items.map(item => <ScheduleCard key={item.scheduleId} entry={item} href={open(item.scheduleId)} overlap={overlapping(item, items)} />)}</div> : <p className="empty-day">{data.nextCursor ? "Остальные занятия доступны в следующей порции" : data.isComplete ? "На этот день занятий нет" : "Нет подтверждённых занятий; сведения могут быть неполными"}</p>}</section>;
-    })}</div>
-    {moreError && <p role="alert" className="notice notice-warning">{moreError} Уже загруженные занятия сохранены.</p>}{data.nextCursor && <Button variant="secondary" onClick={more} disabled={busy}>{busy ? "Загружаем…" : "Показать ещё"}</Button>}
+    <section className="agenda-toolbar" aria-label="Управление расписанием">
+      <div className="agenda-week-control" aria-label="Переключение недель"><span className="agenda-week-label">Неделя</span><button type="button" onClick={() => navigate(addDays(from, -7))} aria-label="Предыдущая неделя"><ChevronLeft size={20} /></button><strong>{compactDate(from)} — {formatDay(to)}</strong><button type="button" onClick={() => navigate(addDays(from, 7))} aria-label="Следующая неделя"><ChevronRight size={20} /></button><button type="button" className="agenda-current" aria-current={from === weekStart(today) ? "date" : undefined} onClick={() => navigate(today)}>Текущая неделя</button></div>
+      <div className="agenda-mode" role="group" aria-label="Режим поиска">{(["group", "teacher", "room"] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} onClick={() => { setMode(value); reset(); }}>{labels[value]}</button>)}</div>
+      <div className="agenda-search-wrap" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSuggestionsOpen(false); }}>
+        <label className="agenda-search"><Search size={18} aria-hidden="true" /><input type="search" value={query} onChange={event => { setQuery(event.target.value); setSelected(null); setSuggestionsOpen(true); }} onFocus={() => setSuggestionsOpen(true)} placeholder={mode === "group" ? "Введите номер группы" : mode === "teacher" ? "Введите фамилию преподавателя" : "Введите номер аудитории"} aria-label={`Поиск: ${labels[mode].toLowerCase()}`} />{query && <button type="button" onClick={reset} aria-label="Очистить поиск">×</button>}</label>
+        {suggestionsOpen && search && !selected && <div className="agenda-suggestions" aria-label="Варианты поиска">{state.kind === "loading" || (mode === "group" && profileState.kind === "loading") ? <p>Загружаем варианты…</p> : state.kind === "error" || (mode === "group" && profileState.kind === "error") ? <p>Не удалось получить варианты поиска</p> : suggestions.length ? suggestions.map(value => <button type="button" key={value} onMouseDown={event => event.preventDefault()} onClick={() => { setQuery(value); setSelected(value); setSuggestionsOpen(false); }}><small>{labels[mode]}</small><strong>{value}</strong><span>›</span></button>) : <p>Совпадений среди доступных занятий нет</p>}</div>}
+      </div>
+    </section>
+    {state.kind === "error" ? <RemoteState state={state} retry={reload} /> : !selected ? <section className="agenda-empty-selection" aria-label="Расписание не выбрано"><span className="agenda-empty-icon" aria-hidden="true"><CalendarSearch size={112} strokeWidth={1.35} /></span><h2>Выберите группу, преподавателя или аудиторию</h2><p>Расписание появится после выбора параметра</p></section> : state.kind === "loading" ? <RemoteState state={state} retry={reload} /> : <>
+      {schedule?.meta.sourceStatus === "PARTIAL" && <div className="notice notice-warning" role="status"><strong>Показаны подтверждённые сведения</strong><p>{schedule.meta.partialErrors?.some(e => e.dataset === "CONTEXT") ? "Не удалось однозначно определить официальную подгруппу для части дисциплин. Для них показаны только занятия всей группы." : "Часть сведений или история изменений недоступна. Пустой список не подтверждает отсутствие занятий."}</p></div>}
+      <section className="agenda-panel" aria-labelledby="agenda-title"><header className="agenda-panel-head"><div><span className="page-hero-eyebrow">НЕДЕЛЬНЫЙ ПЛАН</span><h2 id="agenda-title">Занятия недели</h2></div><span className="agenda-count">{filtered.length} занятий</span></header>
+        {days.map(day => {
+          const items = filtered.filter(item => item.plannedStart && item.timeZone && localDay(item.plannedStart, item.timeZone) === day);
+          return <section key={day} id={`day-${day}`} className="agenda-day" aria-labelledby={`day-title-${day}`}><header className="agenda-day-head"><span className="agenda-day-badge">{new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", weekday: "short" }).format(new Date(`${day}T12:00:00Z`)).toUpperCase()}</span><div><h3 id={`day-title-${day}`}>{dayName(day)}</h3><small>{compactDate(day)}</small></div></header><div className="agenda-day-items">{items.length ? items.map(item => <Lesson key={item.scheduleId} entry={item} href={open(item.scheduleId)} />) : <p className="agenda-empty-day">{schedule?.data.isComplete ? "В этот день занятий нет" : "Нет подтверждённых занятий; сведения могут быть неполными"}</p>}</div></section>;
+        })}
+      </section>
+    </>}
   </>;
 }
+
 export function ScheduleScreen({ today }: { today: string }) {
   const params = useSearchParams(), router = useRouter(), dialog = useRef<HTMLDialogElement>(null), lastOpened = useRef<string | null>(null);
   const parsed = z.string().date().safeParse(params.get("date"));
-  const date = parsed.success ? parsed.data : today, view = params.get("view") === "week" ? "week" : "day";
-  const from = view === "week" ? weekStart(date) : date, to = view === "week" ? addDays(from, 6) : from;
-  const entry = params.get("entry"), base = `/schedule?date=${date}&view=${view}`;
-  const navigate = (nextDate: string, nextView = view) => router.push(`/schedule?date=${nextDate}&view=${nextView}`, { scroll: false });
+  const date = parsed.success ? parsed.data : today;
+  const from = weekStart(date), to = addDays(from, 6);
+  const entry = params.get("entry"), base = `/schedule?date=${date}`;
+  const navigate = (nextDate: string) => router.push(`/schedule?date=${nextDate}`, { scroll: false });
   function close() { router.replace(base, { scroll: false }); }
   useEffect(() => {
     if (entry) { lastOpened.current = entry; if (!dialog.current?.open) dialog.current?.showModal(); }
-    else { dialog.current?.close(); if (lastOpened.current) document.getElementById(`lesson-${lastOpened.current}`)?.focus(); }
+    else { dialog.current?.close(); if (lastOpened.current) (document.getElementById(`lesson-${lastOpened.current}`) ?? document.querySelector<HTMLInputElement>(".agenda-search input"))?.focus(); }
   }, [entry]);
-  return <main id="main" className="workspace"><div className="page-heading"><div><p className="eyebrow">Учебная неделя</p><h1>Расписание</h1><p className="muted">Занятия вашей группы и официальных подгрупп по дисциплинам</p></div></div>
-    <div className="schedule-toolbar"><div className="segmented" aria-label="Режим расписания"><button aria-pressed={view === "day"} onClick={() => navigate(date, "day")}>День</button><button aria-pressed={view === "week"} onClick={() => navigate(date, "week")}>Неделя</button></div><div className="date-navigation"><Button variant="secondary" aria-label={view === "week" ? "Предыдущая неделя" : "Предыдущий день"} onClick={() => navigate(addDays(date, view === "week" ? -7 : -1))}><ChevronLeft /></Button><Button variant="secondary" onClick={() => navigate(today)}>Сегодня</Button><Button variant="secondary" aria-label={view === "week" ? "Следующая неделя" : "Следующий день"} onClick={() => navigate(addDays(date, view === "week" ? 7 : 1))}><ChevronRight /></Button></div><label className="date-field">Дата<input type="date" value={date} onChange={event => { if (z.string().date().safeParse(event.target.value).success) navigate(event.target.value); }} /></label></div>
-    <p className="range-label">{formatDay(from)}{to !== from ? ` — ${formatDay(to)}` : ""}</p>{view === "week" && <nav className="week-dates" aria-label="Перейти к дню">{Array.from({ length: 7 }, (_, i) => addDays(from, i)).map(day => <a key={day} href={`#day-${day}`} aria-current={day === today ? "date" : undefined}>{new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", weekday: "short", day: "numeric" }).format(new Date(`${day}T12:00:00Z`))}</a>)}</nav>}
-    <ScheduleData key={`${from}:${view}`} from={from} to={to} view={view} open={id => `${base}&entry=${encodeURIComponent(id)}`} />
+  return <main id="main" className="workspace schedule-r9-main">
+
+    <PageHero eyebrow="УЧЕБНЫЙ ПРОЦЕСС" title="Расписание" description="Просматривайте время занятий, аудитории и преподавателей на выбранную неделю" image="schedule-week.jpg" />
+    <ScheduleData from={from} to={to} today={today} navigate={navigate} open={id => `${base}&entry=${encodeURIComponent(id)}`} />
     <dialog ref={dialog} className="detail-dialog" aria-labelledby="lesson-dialog-title" onCancel={event => { event.preventDefault(); close(); }}><div className="panel-heading"><h2 id="lesson-dialog-title">Занятие</h2><Button variant="quiet" aria-label="Закрыть подробность занятия" onClick={close}><X /></Button></div>{entry && <ScheduleDetailPanel key={entry} scheduleId={entry} />}</dialog>
   </main>;
 }

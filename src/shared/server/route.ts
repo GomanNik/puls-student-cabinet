@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authService } from "@/modules/auth/http-handlers";
-import type { AuthContext } from "@/modules/auth/context";
+import { clientSessionScope, type AuthContext } from "@/modules/auth/context";
 import { readConfig } from "./config";
 import { AppError } from "./errors";
 import { enforceTransport, errorResponse, privateHeaders, readToken } from "./http";
@@ -16,7 +16,7 @@ export function readRoute<T>(schema: z.ZodType<T>, read: (auth: AuthContext, req
       const auth = await authService().requireSession(readToken(request), requestId);
       const result = schema.parse(await read(auth, request));
       await authService().requireSession(readToken(request), requestId);
-      return NextResponse.json(result, { headers: privateHeaders });
+      return NextResponse.json(result, { headers: { ...privateHeaders, "X-Puls-Session-Scope": clientSessionScope(auth) } });
     } catch (error) { return errorResponse(error, requestId); }
   };
 }

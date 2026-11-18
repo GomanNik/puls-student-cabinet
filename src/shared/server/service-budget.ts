@@ -29,7 +29,7 @@ export async function withAssistantBudget<T>(auth:AuthContext,action:()=>Promise
       await lockAndRevalidateSession(tx,auth);
       await run(Prisma.sql`SELECT account_id FROM student_account WHERE account_id=${auth.accountId}::uuid FOR UPDATE`,tx);
       await run(Prisma.sql`DELETE FROM service_concurrency_lease WHERE account_id=${auth.accountId}::uuid AND scope_code='ASSISTANT' AND expires_at<now()`,tx);
-      if((await rows(Prisma.sql`SELECT lease_id FROM service_concurrency_lease WHERE account_id=${auth.accountId}::uuid AND scope_code='ASSISTANT'`,tx)).length)throw new AppError(429,"RATE_LIMITED","Дождитесь ответа на предыдущий вопрос.",15);
+      if((await rows(Prisma.sql`SELECT lease_id FROM service_concurrency_lease WHERE account_id=${auth.accountId}::uuid AND scope_code='ASSISTANT'`,tx)).length>=2)throw new AppError(429,"RATE_LIMITED","Дождитесь ответа на один из текущих вопросов.",15);
       for(const [window,limit] of [[60,10],[3600,60]]){
         const key=createHmac("sha256",readConfig().AUTH_RATE_LIMIT_HMAC_KEY).update(JSON.stringify(["assistant",auth.accountId,window])).digest();
         const [bucket]=await rows<{failed_count:number}>(Prisma.sql`INSERT INTO auth_rate_bucket(key_digest,window_start,failed_count) VALUES(${key},now(),1) ON CONFLICT(key_digest) DO UPDATE SET failed_count=CASE WHEN auth_rate_bucket.window_start<now()-make_interval(secs=>${window}) THEN 1 ELSE auth_rate_bucket.failed_count+1 END,window_start=CASE WHEN auth_rate_bucket.window_start<now()-make_interval(secs=>${window}) THEN now() ELSE auth_rate_bucket.window_start END RETURNING failed_count`,tx);

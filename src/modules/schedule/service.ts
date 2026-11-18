@@ -30,6 +30,7 @@ export class ScheduleService {
     const scope = await this.context.resolve(period, date), assignment = scope.officialAssignments.find(a => a.offeringId === offeringId);
     const id = this.context.offeringId(period.periodId, offeringId);
     return { kind: "OFFERING", offeringId: id, periodId: this.context.periodId(period), title: offering.title,
+      ...(offering.teacherLabel ? { teacherLabel: offering.teacherLabel } : {}),
       subgroup: assignment ? { dataState: "READY", subgroupId: this.context.id("subgroup", period.periodId, offeringId, assignment.subgroupId), label: assignment.subgroupLabel, appliesToOfferingId: id } : { dataState: "UNKNOWN" },
       target: { kind: "OFFERING", targetRef: id } };
   }

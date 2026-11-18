@@ -23,7 +23,9 @@ function hiddenPassword(label: string): Promise<string> {
     process.stdin.on("data", receive);
   });
 }
-const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL, options: "-c timezone=UTC" }) });
+const migrationUrl = process.env.MIGRATION_DATABASE_URL?.trim();
+if (!migrationUrl) throw new Error("Для seed требуется явный MIGRATION_DATABASE_URL владельца БД.");
+const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: migrationUrl, options: "-c timezone=UTC" }) });
 try {
   const a = process.env.PULS_SEED_PASSWORD_A ?? await hiddenPassword("Пароль вымышленного demo-a (ввод скрыт): ");
   const b = process.env.PULS_SEED_PASSWORD_B ?? await hiddenPassword("Пароль вымышленного demo-b (ввод скрыт): ");

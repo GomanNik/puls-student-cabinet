@@ -7,6 +7,7 @@ import { AppError } from "@/shared/server/errors";
 import { enforceOrigin, enforceTransport, errorResponse, jsonContent, parseStrictJson, privateHeaders, readBody, readToken, setSessionCookie } from "@/shared/server/http";
 import { loginSchema, profileResponseSchema, sessionResponseSchema } from "@/shared/contracts/auth";
 import { AuthService } from "./service";
+import { clientSessionScope } from "./context";
 
 export const authService = () => new AuthService(database(), readConfig());
 export function authHandler(operation: "login" | "logout" | "me" | "profile") {
@@ -36,7 +37,7 @@ export function authHandler(operation: "login" | "logout" | "me" | "profile") {
       const context = await service.requireSession(token, requestId);
       const data = operation === "me" ? await service.session(context) : await service.profile(context);
       const schema = operation === "me" ? sessionResponseSchema : profileResponseSchema;
-      return NextResponse.json(schema.parse({ data, meta: { requestId } }), { headers: privateHeaders });
+      return NextResponse.json(schema.parse({ data, meta: { requestId } }), { headers: { ...privateHeaders, "X-Puls-Session-Scope": clientSessionScope(context) } });
     } catch (error) { return errorResponse(error, requestId); }
   };
 }

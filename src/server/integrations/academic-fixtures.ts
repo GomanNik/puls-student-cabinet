@@ -3,7 +3,11 @@ import type { AcademicPeriod, Assignment, Audience, ContextRecord, ExternalRef, 
 import { addDays, daysBetween } from "@/shared/lib/dates";
 
 export const SOURCE = "UNIVERSITY_FIXTURE";
-export const FIXTURE_REVISION = "academic-2026-11-13-1";
+export const FIXTURE_REVISION = "academic-2026-11-18-2";
+const lectureTeachers = ["Воронова Елена Сергеевна", "Светлов Павел Андреевич", "Миронова Ирина Олеговна", "Белов Денис Сергеевич"];
+// Конечный демонстрационный набор уже существовавших дат для осеннего английского.
+// На каждой дате источник содержит общегрупповую лекцию и практику своей подгруппы.
+const fallEnglishMeetingDays = new Set(["2026-09-04", "2026-09-25", "2026-10-16", "2026-11-06", "2026-11-20", "2026-12-18", "2027-01-08", "2027-01-15"]);
 export const ref = (kind: string, id: string): ExternalRef => ({ sourceCode: SOURCE, objectKind: kind, externalId: id });
 const stableNumber = (id: string) => [...id].reduce((sum, character) => (sum * 31 + character.codePointAt(0)!) >>> 0, 7);
 export const periods: AcademicPeriod[] = [
@@ -16,9 +20,9 @@ export function studentFixture(externalStudentId: string) {
   const groupId = `group-${key}`, facultyId = `faculty-${key}`, programId = `program-${key}`;
   const offerings: Offering[] = periods.flatMap(period => (key === "a" ? [
     ["math", "Математический анализ"], ["history", "История России"], ["english", "Иностранный язык"], ["pe", "Физическая культура"],
-  ] : [["history", "История России"], ["english", "Иностранный язык"], ["heritage", "Культурное наследие России"]]).map(([slug, title]) => {
+  ] : [["history", "История России"], ["english", "Иностранный язык"], ["heritage", "Культурное наследие России"]]).map(([slug, title], index) => {
     const offeringId = `${key}-${period.periodId}-${slug}`;
-    return { ref: ref("OFFERING", offeringId), periodId: period.periodId, offeringId, title, groupId,
+    return { ref: ref("OFFERING", offeringId), periodId: period.periodId, offeringId, title, teacherLabel: lectureTeachers[index], groupId,
       membershipRef: ref("MEMBERSHIP", `${externalStudentId}:${offeringId}`) };
   }));
   const context: ContextRecord = { ref: ref("STUDENT_CONTEXT", externalStudentId), externalStudentId, facultyId, programId, groupId, course: key === "a" ? 2 : 3,
@@ -45,6 +49,7 @@ export function fixtureSchedule(externalStudentId: string, periodId: string, fro
     const day = addDays(start, i), weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
     if (weekday === 0 || weekday === 6) continue;
     for (const [index, offering] of offerings.entries()) {
+      if (periodId === "fall-2026" && offering.offeringId.endsWith("-english") && !fallEnglishMeetingDays.has(day)) continue;
       if ((weekday + index) % 2 !== 0 && weekday !== 5) continue;
       const slot = index === 0 ? "09:00" : index === 1 ? "10:50" : "13:00";
       const endSlot = index === 0 ? "10:30" : index === 1 ? "12:20" : "14:30";
@@ -52,7 +57,7 @@ export function fixtureSchedule(externalStudentId: string, periodId: string, fro
       const baseId = `${offering.offeringId}:${weekday}:lecture`;
       result.push({ ref: ref("SCHEDULE", `${baseId}:${day}`), scheduleEntryId: baseId, occurrenceId: day, periodId, offeringId: offering.offeringId,
         title: offering.title, lessonType: "Лекция", startsAt: `${day}T${slot}:00+06:00`, endsAt: `${day}T${endSlot}:00+06:00`, timeZone: "Asia/Omsk",
-        room: index === 3 ? "Спортивный зал" : index === 1 ? "214" : "305", teacherLabel: ["Воронова Елена Сергеевна", "Светлов Павел Андреевич", "Миронова Ирина Олеговна", "Белов Денис Сергеевич"][index], state: "PLANNED", audiences: common });
+        room: index === 3 ? "Спортивный зал" : index === 1 ? "214" : "305", teacherLabel: offering.teacherLabel, state: "PLANNED", audiences: common });
       for (let subgroup = 1; subgroup <= 3; subgroup++) {
         const subgroupId = `${offering.offeringId}-subgroup-${subgroup}`, scheduleEntryId = `${offering.offeringId}:${weekday}:practice:${subgroup}`;
         const changed = day === "2026-11-13" && index === 0;

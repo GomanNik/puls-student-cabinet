@@ -9,7 +9,7 @@ export function database(): PrismaClient {
     globalDb.pulsDb = new PrismaClient({ adapter: new PrismaPg({
       // Prisma PG нормализует timestamptz как UTC; часовой пояс соединения фиксирован.
       connectionString: readConfig().DATABASE_URL, options: "-c timezone=UTC -c statement_timeout=10000 -c lock_timeout=3000 -c idle_in_transaction_session_timeout=20000", max: 8,
-      connectionTimeoutMillis: 3000, idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000, idleTimeoutMillis: 30000,
     }), log: [] });
   }
   return globalDb.pulsDb;

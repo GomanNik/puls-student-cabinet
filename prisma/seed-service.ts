@@ -7,7 +7,9 @@ export async function seedStudents(db: PrismaClient, passwords: readonly [string
     throw new Error("Нужны два разных пароля длиной от 16 до 256 символов.");
   const hashes = await Promise.all(passwords.map(hashPassword));
   return db.$transaction(async tx => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(18203001)`;
+    // Функция блокировки возвращает PostgreSQL void: наружу выдаём только int,
+    // который Prisma умеет десериализовать, сохраняя транзакционную блокировку.
+    await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(18203001)`;
     const accounts: string[] = [];
     for (const [index, student] of demoStudents.entries()) {
       const existing = await tx.accountCredential.findUnique({ where: { loginIdentifierNormalized: student.login } });

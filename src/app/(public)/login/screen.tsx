@@ -1,10 +1,16 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, UserRound, LockKeyhole } from "lucide-react";
 import { api, safeClientMessage } from "@/shared/api/client";
 import { loginSchema, sessionResponseSchema } from "@/shared/contracts/auth";
-import { Brand } from "@/shared/ui/brand";
 import { Button } from "@/shared/ui/button";
+
+function LoginBrand({ light = false }: { light?: boolean }) {
+  return <div className={`login-brand ${light ? "login-brand-light" : ""}`}>
+    <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
+    <span><strong>ПУЛЬС</strong><small>Личный кабинет студента</small></span>
+  </div>;
+}
 
 export function LoginScreen() {
   const [show, setShow] = useState(false), [busy, setBusy] = useState(false);
@@ -27,7 +33,7 @@ export function LoginScreen() {
       setReady(true);
       if (expired) setError("Сессия завершилась. Войдите снова.");
     });
-    void api("/auth/me", sessionResponseSchema, { signal: controller.signal }).then(() => location.replace("/dashboard")).catch(() => {});
+    void api("/auth/me", sessionResponseSchema, { signal: controller.signal, sessionProbe: true }).then(() => location.replace("/dashboard")).catch(() => {});
     return () => controller.abort();
   }, []);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -54,23 +60,25 @@ export function LoginScreen() {
     } catch (failure) { setError(safeClientMessage(failure)); submitting.current = false; setBusy(false); }
   }
   return <main className="login-page">
-    <header className="login-heading"><Brand /><span className="small muted">Личный кабинет студента</span></header>
-    <div className="login-layout">
-      <aside className="intro"><div className="eyebrow">В ритме вашей учёбы</div><h2>Всё важное.<br />В одном пространстве.</h2><p>Расписание, учебная деятельность и вопросы к университету — в одном пространстве.</p><div className="intro-line" /></aside>
-      <section className="login-card" aria-labelledby="login-title">
-        <h1 id="login-title">Вход в ПУЛЬС</h1><p className="muted">Личный кабинет студента</p>
-        <p className="small muted">Конкурсный прототип · Не является официальным сервисом университета</p>
+    <section className="login-visual" aria-label="О проекте ПУЛЬС">
+      <div className="login-scene" aria-hidden="true" />
+      <header className="login-heading"><LoginBrand light /></header>
+      <div className="intro"><h2>Всё важное для учёбы —<br />в одном месте.</h2><p>Ваш университет. Ваш учебный ритм. Ваш ПУЛЬС.</p></div>
+    </section>
+    <section className="login-form-area" aria-labelledby="login-title">
+      <div className="login-card">
+        <LoginBrand />
+        <h1 id="login-title">Вход в аккаунт</h1>
         {/* Без name нативная форма не сериализует реквизиты при сбое JavaScript. */}
         <form className="login-form" method="post" action="/api/v1/auth/login" onSubmit={submit} aria-busy={busy} noValidate>
           <noscript><p className="error-notice" role="alert">Для безопасного входа включите JavaScript и обновите страницу.</p></noscript>
-          <div className="field"><label htmlFor="login">Логин</label><input id="login" autoComplete="username" autoCapitalize="none" spellCheck={false} value={values.login} onChange={event => updateField("login", event.currentTarget.value)} disabled={!ready || busy} aria-invalid={!!fields.login} aria-describedby={fields.login ? "login-error" : undefined} />{fields.login && <p className="field-error" id="login-error">{fields.login}</p>}</div>
-          <div className="field"><label htmlFor="password">Пароль</label><div className="password-field"><input id="password" type={show ? "text" : "password"} autoComplete="current-password" value={values.password} onChange={event => updateField("password", event.currentTarget.value)} disabled={!ready || busy} aria-invalid={!!fields.password} aria-describedby={fields.password ? "password-error" : undefined} /><button className="password-toggle" type="button" disabled={!ready || busy} aria-label={show ? "Скрыть пароль" : "Показать пароль"} aria-controls="password" aria-pressed={show} onClick={() => setShow(current => !current)}>{show ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}</button></div>{fields.password && <p className="field-error" id="password-error">{fields.password}</p>}</div>
+          <div className="field"><label className="sr-only" htmlFor="login">Логин</label><div className="login-input-wrap"><UserRound size={25} aria-hidden="true" /><input id="login" placeholder="Логин" autoComplete="username" autoCapitalize="none" spellCheck={false} value={values.login} onChange={event => updateField("login", event.currentTarget.value)} disabled={!ready || busy} aria-invalid={!!fields.login} aria-describedby={fields.login ? "login-error" : undefined} /></div>{fields.login && <p className="field-error" id="login-error">{fields.login}</p>}</div>
+          <div className="field"><label className="sr-only" htmlFor="password">Пароль</label><div className="login-input-wrap password-field"><LockKeyhole size={25} aria-hidden="true" /><input id="password" placeholder="Пароль" type={show ? "text" : "password"} autoComplete="current-password" value={values.password} onChange={event => updateField("password", event.currentTarget.value)} disabled={!ready || busy} aria-invalid={!!fields.password} aria-describedby={fields.password ? "password-error" : undefined} /><button className="password-toggle" type="button" disabled={!ready || busy} aria-label={show ? "Скрыть пароль" : "Показать пароль"} aria-controls="password" aria-pressed={show} onClick={() => setShow(current => !current)}>{show ? <EyeOff size={24} aria-hidden="true" /> : <Eye size={24} aria-hidden="true" />}</button></div>{fields.password && <p className="field-error" id="password-error">{fields.password}</p>}</div>
           {error && <div className="error-notice" role="alert">{error}</div>}
-          <Button type="submit" disabled={!ready || busy}>{busy ? "Проверяем данные…" : <>Войти <ArrowRight aria-hidden="true" /></>}</Button>
-          <p className="form-hint">Используйте предоставленные тестовые учётные данные</p>
+          <Button type="submit" disabled={!ready || busy}>{busy ? "Проверяем данные…" : "Войти"}</Button>
         </form>
-      </section>
-    </div>
-    <footer className="prototype-note">ПУЛЬС · Цифровой деканат будущего</footer>
+        <details className="login-help"><summary>Не удаётся войти?</summary><p>Используйте данные тестовой учётной записи.</p></details>
+      </div>
+    </section>
   </main>;
 }

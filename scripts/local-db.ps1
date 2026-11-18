@@ -7,7 +7,13 @@ $bin = if ($env:PULS_PG_BIN) { $env:PULS_PG_BIN } else { 'C:\Program Files\Postg
 $ctl = Join-Path $bin 'pg_ctl.exe'
 if (-not (Test-Path -LiteralPath $ctl)) { throw 'Укажите PULS_PG_BIN: каталог bin установленного PostgreSQL 17.' }
 if (-not ([System.IO.Path]::GetFullPath($data).StartsWith($root + [System.IO.Path]::DirectorySeparatorChar))) { throw 'Неверный путь локального кластера.' }
-if ($Stop) { if (Test-Path -LiteralPath (Join-Path $data 'postmaster.pid')) { & $ctl -D $data -m fast -w stop }; exit }
+if ($Stop) {
+  if (Test-Path -LiteralPath (Join-Path $data 'postmaster.pid')) {
+    & $ctl -D $data -m fast -w stop
+    if ($LASTEXITCODE -ne 0) { throw 'Не удалось остановить локальный PostgreSQL.' }
+  }
+  exit
+}
 New-Item -ItemType Directory -Path $local -Force | Out-Null
 function Protect-Path([string]$path) {
   $isDirectory = Test-Path -LiteralPath $path -PathType Container
@@ -27,6 +33,15 @@ function Secret {
   return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_')
 }
 $new = -not (Test-Path -LiteralPath (Join-Path $data 'PG_VERSION'))
+if (-not $new) {
+  # После прерванной первичной настройки наличие PG_VERSION ещё не означает,
+  # что базы/роли и оба файла окружения были успешно подготовлены.
+  foreach ($file in @('.env.local','.env.test.local')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root $file) -PathType Leaf)) {
+      throw 'Локальный кластер уже существует, но комплект файлов окружения неполон. Восстановите настройки вручную; повторная инициализация и смена паролей не выполняются.'
+    }
+  }
+}
 if ($new) {
   foreach ($file in @('.env.local','.env.test.local')) { if (Test-Path -LiteralPath (Join-Path $root $file)) { throw 'Файлы окружения уже существуют; автоматическая перезапись запрещена.' } }
   $ownerPassword = Secret; $webPassword = Secret

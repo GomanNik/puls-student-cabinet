@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, safeClientMessage } from "@/shared/api/client";
 import { useRemote } from "@/shared/api/use-remote";
-import { OfferingListResponseSchema, SessionListResponseSchema, type OfferingSummary } from "@/shared/contracts/student-api";
+import { OfferingListResponseSchema, SessionListResponseSchema, type OfferingListResponse, type OfferingSummary } from "@/shared/contracts/student-api";
 import { Button } from "@/shared/ui/button";
 import { ScheduleCard } from "@/shared/ui/schedule-card";
 import { RemoteState } from "@/shared/ui/remote-state";
@@ -18,7 +18,7 @@ export function OfferingSessionsScreen({ periodId, offeringId }: { periodId: str
     async function title() {
       let cursor: string | null = null;
       do {
-        const page = await api(`/periods/${encodeURIComponent(periodId)}/offerings?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, OfferingListResponseSchema, { signal: controller.signal });
+        const page: OfferingListResponse = await api(`/periods/${encodeURIComponent(periodId)}/offerings?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, OfferingListResponseSchema, { signal: controller.signal });
         const item = page.data.items.find(o => o.offeringId === offeringId);
         if (item) { if (!controller.signal.aborted) setOffering(item); return; }
         cursor = page.data.nextCursor;
