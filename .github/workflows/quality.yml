@@ -1,0 +1,76 @@
+name: Quality
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+      APP_ORIGIN: https://localhost:3444
+      DATABASE_URL: postgresql://puls_ci@127.0.0.1:5432/puls_test
+      MIGRATION_DATABASE_URL: postgresql://puls_ci@127.0.0.1:5432/puls_test
+      SESSION_COOKIE_NAME: __Host-puls_session
+      PULS_AI_PROVIDER: DEMO_MOCK
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_USER: puls_ci
+          POSTGRES_DB: puls_test
+          # Одноразовый контейнер изолирован в сети job; настоящих учётных данных нет.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U puls_ci -d puls_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prepare isolated test configuration
+        shell: bash
+        run: |
+          umask 077
+          echo "AUTH_RATE_LIMIT_HMAC_KEY=$(openssl rand -base64 48 | tr -d '\n')" >> "$GITHUB_ENV"
+          echo "TRUSTED_PROXY_KEY=$(openssl rand -base64 48 | tr -d '\n')" >> "$GITHUB_ENV"
+          printf 'APP_ORIGIN=%s\nDATABASE_URL=%s\nMIGRATION_DATABASE_URL=%s\nSESSION_COOKIE_NAME=%s\nAUTH_RATE_LIMIT_HMAC_KEY=%s\nTRUSTED_PROXY_KEY=%s\n' \
+            "$APP_ORIGIN" "$DATABASE_URL" "$MIGRATION_DATABASE_URL" "$SESSION_COOKIE_NAME" \
+            "$(grep '^AUTH_RATE_LIMIT_HMAC_KEY=' "$GITHUB_ENV" | tail -1 | cut -d= -f2-)" \
+            "$(grep '^TRUSTED_PROXY_KEY=' "$GITHUB_ENV" | tail -1 | cut -d= -f2-)" > .env.test.local
+      - name: Validate Prisma schema
+        run: pnpm exec prisma validate
+      - name: Apply migrations to puls_test
+        run: pnpm db:migrate
+      - name: TypeScript
+        run: pnpm typecheck
+      - name: ESLint
+        run: pnpm lint
+      - name: Unit tests
+        run: pnpm test
+      - name: Integration tests
+        run: pnpm test:integration
+      - name: Production build
+        run: pnpm build
+      - name: Check build artifacts
+        run: pnpm check:artifacts

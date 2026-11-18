@@ -2257,6 +2257,10 @@ components:
         title:
           type: string
           minLength: 1
+        teacherLabel:
+          type: string
+          minLength: 1
+          description: Преподаватель лекций, если указан учебным источником
         groupId:
           type: string
         membershipRef:

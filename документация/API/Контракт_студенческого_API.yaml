@@ -303,11 +303,20 @@ paths:
       operationId: listOfferings
       summary: Список изучаемых дисциплин периода
       description: Каждый offering подтверждён membership; официальная подгруппа
-        назначается только для этого offering.
+        назначается только для этого offering. Поиск применяется ко всей выборке
+        доступных студенту дисциплин до постраничной выдачи.
       parameters:
         - $ref: '#/components/parameters/PeriodId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
+        - name: search
+          in: query
+          required: false
+          description: Поиск по названию дисциплины
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 160
       responses:
         '200':
           description: Успешно
@@ -2403,7 +2412,8 @@ paths:
       operationId: askAssistant
       summary: Задать вопрос помощнику без права изменения данных
       description: Сервер собирает минимум своего проверенного контекста; ответ
-        ДЕМО_MOCK явно обозначен DEMO_MOCK; история не сохраняется.
+        DEMO_MOCK явно обозначен DEMO_MOCK. Ограниченная история передаётся клиентом
+        из текущей авторизованной сессии и не служит источником учебных фактов.
       parameters:
         - $ref: '#/components/parameters/Origin'
       requestBody:
@@ -3029,6 +3039,10 @@ components:
         title:
           type: string
           minLength: 1
+        teacherLabel:
+          type: string
+          minLength: 1
+          description: Преподаватель лекций, если указан учебным источником
         attestationLabel:
           type: string
         subgroup:
@@ -4758,6 +4772,25 @@ components:
           type: string
           maxLength: 4000
           minLength: 1
+        history:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum:
+                  - user
+                  - assistant
+              content:
+                type: string
+                minLength: 1
+                maxLength: 2000
+            required:
+              - role
+              - content
+            additionalProperties: false
         contextHint:
           type: string
           enum:

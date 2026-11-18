@@ -9,6 +9,10 @@ test-results
 .env.*
 _reference
 ПУЛЬС_OGE_Tutor_выборка_кода_для_Codex.zip
+*.zip
+*.bak
+*.dump
+PATCH_NOTES.md
 .local
 *.log
 документация
