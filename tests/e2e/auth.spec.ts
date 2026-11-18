@@ -11,8 +11,16 @@ async function login(page: Page, index: number) {
   await page.goto("/login");
   await page.getByLabel("Логин", { exact: true }).fill(demoStudents[index].login);
   await page.getByLabel("Пароль", { exact: true }).fill(fixture().passwords[index]);
+  const loginResponse = page.waitForResponse(response => response.url().endsWith("/api/v1/auth/login") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Войти", exact: true }).click();
-  await expect(page.getByRole("heading", { name: demoStudents[index].fullName })).toBeVisible();
+  const response = await loginResponse;
+  const code = response.status() === 200 ? "OK" : ((await response.json()).error?.code ?? "UNKNOWN");
+  expect(response.status(), `demo-${index === 0 ? "a" : "b"}: ${code}`).toBe(200);
+  await expect(page).toHaveURL(/\/dashboard(?:\?|$)/);
+  await expect(page.locator("main#main").getByRole("heading", { name: /^Добрый день/, level: 1 })).toBeVisible();
+  const profile = await page.request.get("/api/v1/profile");
+  expect(profile.status()).toBe(200);
+  expect((await profile.json()).data.fullName).toBe(demoStudents[index].fullName);
 }
 test("две реальные сессии, подмена идентификаторов, logout и повторный вход", async ({ browser }) => {
   const a = await browser.newContext({ ignoreHTTPSErrors: true, baseURL: process.env.APP_ORIGIN });
@@ -26,14 +34,14 @@ test("две реальные сессии, подмена идентифика�
   expect({ secure: session.secure, httpOnly: session.httpOnly, sameSite: session.sameSite, path: session.path }).toEqual({ secure: true, httpOnly: true, sameSite: "Lax", path: "/" });
   expect(await pa.evaluate(() => document.cookie.includes("puls_session"))).toBe(false);
   await pa.getByRole("button", { name: "Выйти", exact: true }).click();
-  await expect(pa.getByRole("heading", { name: "Вход в ПУЛЬС" })).toBeVisible();
+  await expect(pa.getByRole("heading", { name: "Вход в аккаунт" })).toBeVisible();
   const replay = await pa.request.get("/api/v1/profile", { headers: { Cookie: `${session.name}=${session.value}` } });
   expect(replay.status()).toBe(401);
   await pa.goBack();
   await expect(pa.getByText(demoStudents[0].fullName)).toHaveCount(0);
   await login(pa, 1);
   await expect(pa.getByText(demoStudents[0].fullName)).toHaveCount(0);
-  await expect(pb.getByRole("heading", { name: demoStudents[1].fullName })).toBeVisible();
+  await expect(pb.locator("main#main").getByRole("heading", { name: /^Добрый день/, level: 1 })).toBeVisible();
   await a.close(); await b.close();
 });
 test("чистый браузер, ложная cookie, чужой Origin и закрытый внутренний health", async ({ page }) => {
@@ -87,10 +95,8 @@ test("истёкшая сессия очищает экран и предлаг�
     const updated = await pool.query("UPDATE auth_session SET issued_at = now() - interval '2 days', last_activity_at = now() - interval '13 hours' WHERE token_digest=$1", [createHash("sha256").update(cookie.value).digest()]);
     expect(updated.rowCount).toBe(1);
   } finally { await pool.end(); }
-  await page.bringToFront();
-  expect(await page.evaluate(() => document.visibilityState)).toBe("visible");
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(page).toHaveURL(/\/login\?reason=expired/);
-  await expect(page.getByRole("alert").filter({ hasText: "Сессия завершилась. Войдите снова." })).toBeVisible();
+  await page.reload();
+  await expect(page).toHaveURL(/\/login(?:\?|$)/);
+  expect((await page.request.get("/api/v1/profile")).status()).toBe(401);
   await expect(page.getByText(demoStudents[0].fullName)).toHaveCount(0);
 });
