@@ -20,11 +20,29 @@ export function AnnouncementCard({item}:{item:C.Announcement}){return <article c
 export function AnnouncementsScreen(){return <main id="main" className="content-main community-r9-main"><PageHero eyebrow="СОБЫТИЯ И ИЗМЕНЕНИЯ" title="Объявления" description="Публикации, доступные в вашем учебном контексте." image="notifications-desk.jpg"/><section className="community-r9-list" aria-label="Доступные объявления"><PagedList path="/announcements" schema={C.AnnouncementListResponseSchema} renderItem={item=><AnnouncementCard key={item.announcementId} item={item}/>} empty="Опубликованных объявлений пока нет."/></section></main>;}
 export function AnnouncementScreen({id}:{id:string}){const {state,reload}=useRemote(`/announcements/${id}`,C.AnnouncementDetailResponseSchema);if(state.kind!=="ready")return <RemoteState state={state} retry={reload}/>;const item=state.value.data;return <main id="main" className="content-main community-r9-main community-detail-main"><article className="community-detail-panel"><span className="page-hero-eyebrow">ОБЪЯВЛЕНИЕ</span><h1>{item.title}</h1><dl className="community-detail-meta"><div><dt>Источник</dt><dd>{item.authorLabel??"Не указан"}</dd></div><div><dt>Опубликовано</dt><dd>{item.publishedAt?formatDay(localDay(item.publishedAt,"Asia/Omsk")):"Дата не указана"}</dd></div></dl><div className="community-detail-body preserve-text">{item.body??"Дополнительный текст не опубликован."}</div><div className="community-detail-actions"><Link className="button button-secondary" href="/notifications?category=ANNOUNCEMENT">← Назад к уведомлениям</Link></div></article></main>;}
 export function NotificationCard({item,onRead}:{item:C.Notification;onRead?:()=>void}){
-  const cache=useRemoteCache();
+  const cache=useRemoteCache(),router=useRouter();
   const [busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),abort=useRef<AbortController|null>(null);
   useEffect(()=>()=>abort.current?.abort(),[]);
-  async function mark(){if(busy)return;setBusy(true);setError(null);const c=new AbortController();abort.current=c;try{await api("/notifications/read",C.ReadResponseSchema,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({notificationKeys:[item.notificationKey]}),signal:c.signal});if(!c.signal.aborted){cache.markNotificationsRead([item.notificationKey]);onRead?.();}}catch(e){if(!c.signal.aborted)setError(safeClientMessage(e));}finally{if(!c.signal.aborted)setBusy(false);}}
-  return <article className={`notification-r9-row ${item.isRead?"":"notification-r9-unread"}`}><span className={`notification-r9-icon category-${item.category.toLowerCase()}`}><Bell size={20} aria-hidden="true"/></span><div className="notification-r9-copy"><div className="notification-r9-meta"><span>{labels[item.category]}</span><span>{item.isRead?"Прочитано":"Новое"}</span></div><h3>{item.target?<Link href={targetHref(item.target)}>{item.title}</Link>:item.title}</h3>{item.bodyPreview&&<p>{item.bodyPreview}</p>}{item.occurredAt&&<time dateTime={item.occurredAt}>{formatDay(localDay(item.occurredAt,"Asia/Omsk"))}</time>}{error&&<p className="error-notice" role="alert">{error}</p>}</div>{!item.isRead&&<Button variant="quiet" disabled={busy} onClick={()=>void mark()}>{busy?"Сохраняем…":"Отметить прочитанным"}</Button>}{item.target&&<Link className="notification-r9-arrow" href={targetHref(item.target)} aria-label={`Открыть: ${item.title}`}><ChevronRight size={19} aria-hidden="true"/></Link>}</article>;
+  async function mark(){
+    if(item.isRead)return true;
+    if(abort.current)return false;
+    setBusy(true);setError(null);
+    const c=new AbortController();abort.current=c;
+    try{
+      await api("/notifications/read",C.ReadResponseSchema,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({notificationKeys:[item.notificationKey]}),signal:c.signal});
+      if(c.signal.aborted)return false;
+      cache.markNotificationsRead([item.notificationKey]);onRead?.();
+      return true;
+    }catch(e){if(!c.signal.aborted)setError(safeClientMessage(e));return false;}
+    finally{if(abort.current===c)abort.current=null;if(!c.signal.aborted)setBusy(false);}
+  }
+  const href=item.target?targetHref(item.target):null;
+  const open=(event:React.MouseEvent<HTMLAnchorElement>)=>{
+    if(item.isRead||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+    event.preventDefault();
+    if(href)void mark().then(saved=>{if(saved)router.push(href);});
+  };
+  return <article className={`notification-r9-row ${item.isRead?"":"notification-r9-unread"}`}><span className={`notification-r9-icon category-${item.category.toLowerCase()}`}><Bell size={20} aria-hidden="true"/></span><div className="notification-r9-copy"><div className="notification-r9-meta"><span>{labels[item.category]}</span><span>{item.isRead?"Прочитано":"Новое"}</span></div><h3>{href?<Link href={href} onClick={open}>{item.title}</Link>:item.title}</h3>{item.bodyPreview&&<p>{item.bodyPreview}</p>}{item.occurredAt&&<time dateTime={item.occurredAt}>{formatDay(localDay(item.occurredAt,"Asia/Omsk"))}</time>}{error&&<p className="error-notice" role="alert">{error}</p>}</div>{!item.isRead&&<Button variant="quiet" disabled={busy} onClick={()=>void mark()}>{busy?"Сохраняем…":"Отметить прочитанным"}</Button>}{href&&<Link className="notification-r9-arrow" href={href} onClick={open} aria-label={`Открыть: ${item.title}`}><ChevronRight size={19} aria-hidden="true"/></Link>}</article>;
 }
 export function NotificationsScreen(){
   const cache=useRemoteCache();
