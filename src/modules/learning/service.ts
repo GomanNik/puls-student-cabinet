@@ -11,6 +11,7 @@ import { localDay } from "@/shared/lib/dates";
 import type { AcademicSearchResult, Target } from "@/shared/contracts/student-api";
 
 import { securityAudit } from "@/shared/server/security-audit";
+import type { GradeRow } from "./grades-contract";
 
 type Read<T> = { sourceCode: string; requestedScope: RequestedScope; availability: SourceAvailability; isComplete: boolean | null; items: T[]; sourceRevision?: string };
 type Slice<T> = { items: T[]; state: DataState; complete: boolean | null; errors: PartialError[]; dataset?: PartialError["dataset"] };
@@ -225,6 +226,66 @@ export class LearningService {
       ...(result ? { officialResult: { resultId: this.id(binding, "official-result", result.courseResultId), label: "Официальный итог по дисциплине", state: result.resultState, ...(result.result ? { value: this.value(result.result) } : {}), ...(result.assessedAt ? { assessedAt: result.assessedAt } : {}), ...(result.attestationId && attestations.items.some(a => a.attestationId === result.attestationId) ? { attestationId: this.id(binding, "attestation", result.attestationId) } : {}) } } : {}) };
     return { data, meta: this.meta([works, grading, components, attestations, official]), slices: [works, grading, components, attestations, official] };
   }
+  /** Сводная официальная ведомость одного семестра без повторного расчёта оценок. */
+  async gradeReport(publicPeriod: string) {
+    const period = this.context.period(publicPeriod);
+    // getOfferings возвращает только дисциплины с подтверждённым membership этого студента.
+    const offerings = await this.context.getOfferings(period);
+    const items: GradeRow[] = [];
+    const slices: Slice<unknown>[] = [];
+
+    // Небольшие группы запросов не блокируют рендер на десятках последовательных вызовов
+    // и одновременно не создают неограниченную нагрузку на учебный источник.
+    for (let offset = 0; offset < offerings.length; offset += 4) {
+      const batch = await Promise.all(offerings.slice(offset, offset + 4).map(async offering => {
+        const binding: LearningBinding = {
+          period, publicPeriod, kind: "OFFERING", title: offering.title,
+          publicContext: this.context.offeringId(period.periodId, offering.offeringId),
+          source: { ...this.context.sourcePeriod(period), offeringId: offering.offeringId },
+        };
+        // Не загружаем работы и посещаемость; read проверяет принадлежность
+        // к источнику, учебному периоду и текущей ревизии.
+        const [attestations, official] = await Promise.all([
+          this.read(binding, () => this.port.getAttestations(binding.source), "ATTESTATION",
+            a => a.periodId === period.periodId && a.offeringId === offering.offeringId),
+          this.read(binding, () => this.port.getCourseResults(binding.source), "ASSESSMENT",
+            r => r.periodId === period.periodId && r.offeringId === offering.offeringId &&
+              r.externalStudentId === this.context.identity.externalStudentId),
+        ]);
+        const result = official.items.length === 1 ? official.items[0] : undefined;
+        if (official.items.length > 1) {
+          official.complete = false;
+          official.errors.push({ dataset: "ASSESSMENT", code: "SOURCE_INVALID" });
+        }
+        const row: GradeRow = {
+          offeringId: binding.publicContext, title: offering.title,
+          controls: [...new Set(attestations.items.map(a => a.kindLabel))],
+          controlsState: attestations.state,
+          resultState: result?.resultState ?? (official.state === "SOURCE_ERROR" ? "SOURCE_ERROR" :
+            official.state === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : "UNKNOWN"),
+          ...(result?.result && (result.resultState === "READY" || result.resultState === "KNOWN_ZERO")
+            ? { value: this.value(result.result) } : {}),
+          ...(result?.assessedAt && (result.resultState === "READY" || result.resultState === "KNOWN_ZERO")
+            ? { assessedAt: result.assessedAt } : {}),
+        };
+        return { row, reads: [attestations, official] as Slice<unknown>[] };
+      }));
+      for (const { row, reads } of batch) {
+        items.push(row);
+        slices.push(...reads);
+      }
+    }
+    items.sort((a, b) => a.title.localeCompare(b.title, "ru-RU") || a.offeringId.localeCompare(b.offeringId));
+    const meta = this.meta(slices);
+    return {
+      data: {
+        periodId: publicPeriod, items, isComplete: meta.completeness === true,
+        dataState: items.length ? "READY" as const : meta.completeness === true ? "EMPTY_CONFIRMED" as const : "UNKNOWN" as const,
+      },
+      meta,
+    };
+  }
+
   async timeline(binding: LearningBinding) {
     const works = await this.works(binding), entries: TimelineEntry[] = [], errors: Slice<unknown>[] = [works];
     const instant = (at?: string): AcademicDate | undefined => at ? { precision: "DATE_TIME", at, timeZone: this.port.timeZone } : undefined;

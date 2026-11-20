@@ -9,6 +9,7 @@ import { OfferingListResponseSchema, PeriodListResponseSchema, UnitListResponseS
 import { PagedList } from "@/shared/ui/paged-list";
 import { RemoteState } from "@/shared/ui/remote-state";
 import { PageHero } from "@/shared/ui/page-hero";
+import { GradesScreen } from "@/modules/learning/grades-screen";
 
 const disciplineImages: Record<string, string> = {
   "Математический анализ": "/puls/discipline-math.webp",
@@ -45,7 +46,15 @@ export function StudyScreen() {
   if (state.kind !== "ready") return <main id="main" className="workspace"><h1>Учёба</h1><RemoteState state={state} retry={reload} /></main>;
   const periods = state.value.data.items, requested = params.get("period");
   const selected = requested ? periods.find(p => p.periodId === requested) : periods.find(p => p.isCurrent) ?? periods[0];
+  const section = params.get("tab") === "grades" ? "grades" : "disciplines";
   return <main id="main" className="workspace study-r9-main">
     <PageHero title="Учёба" description="Дисциплины выбранного периода, учебные работы и сроки аттестации — в одном разделе." image="study-overview.jpg" />
-    {selected ? <OfferingList key={selected.periodId} periodId={selected.periodId} periods={periods} /> : <p className="notice">{requested ? "Этот учебный период недоступен." : "Подтверждённых учебных периодов пока нет."}</p>}</main>;
+    {selected && <nav className="study-subnav" aria-label="Разделы учёбы">
+      <Link href={`/study?tab=disciplines&period=${encodeURIComponent(selected.periodId)}`} aria-current={section === "disciplines" ? "page" : undefined}>Дисциплины</Link>
+      <Link href={`/study?tab=grades&period=${encodeURIComponent(selected.periodId)}`} aria-current={section === "grades" ? "page" : undefined}>Оценки</Link>
+    </nav>}
+    {selected ? section === "grades"
+      ? <GradesScreen key={selected.periodId} periodId={selected.periodId} periods={periods} />
+      : <OfferingList key={selected.periodId} periodId={selected.periodId} periods={periods} />
+      : <p className="notice">{requested ? "Этот учебный период недоступен." : "Подтверждённых учебных периодов пока нет."}</p>}</main>;
 }

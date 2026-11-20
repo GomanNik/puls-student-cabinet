@@ -1,0 +1,40 @@
+/* Ведомость по одному семестру. Не изменяет стили карточек дисциплин. */
+.study-subnav { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin:14px 0 24px; border-bottom:1px solid #eadde2; }
+.study-subnav a { display:inline-flex; min-height:42px; align-items:center; justify-content:center; padding:10px 18px; border-bottom:3px solid transparent; color:#715865; font-size:14px; font-weight:700; text-decoration:none; }
+.study-subnav a[aria-current="page"] { color:#ad1649; border-bottom-color:#c5164e; }
+.study-subnav a:hover { color:#a01947; }
+.study-subnav a:focus-visible { outline:2px solid #c5164e; outline-offset:-2px; }
+.grades-heading { align-items:end; margin-bottom:17px; }
+.grades-heading h2 { margin:0; }
+.grades-heading p { margin:8px 0 0; color:#745b68; font-size:14px; line-height:1.5; }
+.grades-section { min-width:0; }
+.grades-table-scroll { max-width:1050px; overflow-x:auto; border:1px solid #e6d8de; border-radius:14px; background:#fff; }
+.grades-table { width:100%; border-collapse:collapse; table-layout:fixed; color:#382630; font-size:14px; }
+.grades-col-discipline { width:45%; }
+.grades-col-control { width:22%; }
+.grades-col-result { width:19%; }
+.grades-col-date { width:14%; }
+.grades-table thead { background:#fbf4f6; }
+.grades-table th,.grades-table td { padding:15px 16px; border-bottom:1px solid #eee4e8; text-align:left; vertical-align:top; overflow-wrap:anywhere; line-height:1.48; }
+.grades-table thead th { color:#704455; font-weight:750; }
+.grades-table tbody tr:last-child th,.grades-table tbody tr:last-child td { border-bottom:0; }
+.grades-table tbody th { font-weight:650; }
+.grades-table tbody th a { color:#9f1747; text-decoration:none; }
+.grades-table tbody th a:hover { text-decoration:underline; }
+.grades-table tbody tr:hover { background:#fffafb; }
+.grades-pending { color:#866e77; }
+.grades-date-mobile { display:none; }
+@media(max-width:700px) {
+  .study-subnav { margin:10px 0 18px; }
+  .study-subnav a { flex:1; padding:10px 12px; font-size:13px; }
+  .grades-heading .study-r9-period-select { width:100%; }
+  .grades-table { font-size:12px; }
+  .grades-table th,.grades-table td { padding:12px 8px; }
+  .grades-col-discipline { width:43%; }
+  .grades-col-control { width:26%; }
+  .grades-col-result { width:31%; }
+  .grades-col-date,.grades-date { display:none; }
+  .grades-date-mobile { display:block; margin-top:5px; color:#866e77; font-size:11px; }
+}
+
+.grades-table caption.visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; white-space:nowrap; clip:rect(0,0,0,0); border:0; }
