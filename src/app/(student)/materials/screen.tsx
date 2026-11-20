@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, BookOpen, FileText, Link2, Search } from "lucide-react";
 import { api, safeClientMessage } from "@/shared/api/client";
-import { useRemote } from "@/shared/api/use-remote";
-import { MaterialListResponseSchema, OfferingListResponseSchema, PeriodListResponseSchema, type Material } from "@/shared/contracts/student-api";
+import { useRemote, type Remote } from "@/shared/api/use-remote";
+import { MaterialListResponseSchema, OfferingListResponseSchema, PeriodListResponseSchema, type Material, type OfferingListResponse } from "@/shared/contracts/student-api";
 import { Button } from "@/shared/ui/button";
 import { PageHero } from "@/shared/ui/page-hero";
 import { RemoteState } from "@/shared/ui/remote-state";
@@ -19,13 +19,19 @@ function MaterialRow({ item }: { item: Material }) {
     <span className="catalog-row-action">Подробнее <ArrowRight size={18} aria-hidden="true" /></span>
   </Link>;
 }
-function MaterialCatalog({ path }: { path: string }) {
+function DisciplineOptionsLoader({ periodId, onLoad }: { periodId: string; onLoad: (id: string, state: Remote<OfferingListResponse>) => void }) {
+  const { state } = useRemote(`/periods/${encodeURIComponent(periodId)}/offerings?limit=100`, OfferingListResponseSchema, true);
+  useEffect(() => { onLoad(periodId, state); }, [onLoad, periodId, state]);
+  return null;
+}
+function MaterialCatalog({ path, search, setSearch, format, setFormat, resetFilters }: {
+  path: string; search: string; setSearch: (value: string) => void;
+  format: string; setFormat: (value: string) => void; resetFilters: () => void;
+}) {
   const { state, reload, setState, isCurrent, revision } = useRemote(path, MaterialListResponseSchema);
   const key = `${path}:${revision}`;
   const [pageStatus, setPageStatus] = useState<{ key: string; busy: boolean; error: string | null }>({ key, busy: false, error: null });
   const pending = useRef<AbortController | null>(null);
-  const [search, setSearch] = useState("");
-  const [format, setFormat] = useState("");
   const busy = pageStatus.key === key && pageStatus.busy;
   const error = pageStatus.key === key ? pageStatus.error : null;
   useEffect(() => {
@@ -59,7 +65,7 @@ function MaterialCatalog({ path }: { path: string }) {
   const files = matches.filter(item => item.kind === "FILE");
   const links = matches.filter(item => item.kind === "LINK");
   const clearPageError = () => setPageStatus(current => current.key === key ? { ...current, error: null } : current);
-  const reset = () => { setSearch(""); setFormat(""); clearPageError(); };
+  const reset = () => { resetFilters(); clearPageError(); };
   return <>
     {meta.sourceStatus === "PARTIAL" && <p className="notice notice-warning" role="status">Показаны доступные материалы. Сведения источника могут быть неполными.</p>}
     <div className="catalog-local-filters"><label>Поиск по названию<span><Search size={17} aria-hidden="true" /><input type="search" value={search} onChange={event => { setSearch(event.target.value); clearPageError(); }} placeholder="Название файла или ресурса" /></span></label><label>Формат<select value={format} onChange={event => { setFormat(event.target.value); clearPageError(); }}><option value="">Все форматы</option><option value="PDF">PDF</option><option value="DOCX">DOCX</option><option value="PPTX">PPTX</option><option value="XLSX">XLSX</option><option value="LINK">Ссылки</option></select></label><button type="button" onClick={reset}>Сбросить</button></div>
@@ -76,9 +82,21 @@ function MaterialCatalog({ path }: { path: string }) {
 }
 export function MaterialsScreen() {
   const params = useSearchParams(), router = useRouter();
-  const periods = useRemote("/periods", PeriodListResponseSchema);
+  const periods = useRemote("/periods", PeriodListResponseSchema, true);
+  const [search, setSearch] = useState("");
+  const [format, setFormat] = useState("");
+  const [disciplineOptions, setDisciplineOptions] = useState<Record<string, Remote<OfferingListResponse>>>({});
+  const receiveOptions = useCallback((id: string, state: Remote<OfferingListResponse>) => {
+    setDisciplineOptions(current => current[id] === state ? current : { ...current, [id]: state });
+  }, []);
   const periodId = params.get("periodId"), offeringId = params.get("offeringId"), unitId = params.get("unitId");
-  const offerings = useRemote(periodId ? `/periods/${encodeURIComponent(periodId)}/offerings?limit=100` : null, OfferingListResponseSchema);
+  function changeDiscipline(value: string) {
+    const scope = new URLSearchParams();
+    if (periodId) scope.set("periodId", periodId);
+    if (value) scope.set("offeringId", value);
+    router.push(scope.size ? `/materials?${scope}` : "/materials");
+  }
+  function resetFilters() { setSearch(""); setFormat(""); router.push("/materials"); }
   const filter = new URLSearchParams({ limit: "20" });
   if (periodId) filter.set("periodId", periodId);
   if (offeringId) filter.set("offeringId", offeringId);
@@ -86,8 +104,14 @@ export function MaterialsScreen() {
   const path = `/materials?${filter}`;
   return <main id="main" className="workspace materials-r9-main">
     <PageHero eyebrow="УЧЕБНЫЙ КАБИНЕТ" title="Материалы" description="Учебные файлы и внешние ресурсы, доступные в личном кабинете." image="materials-library.jpg" />
-    <div className="catalog-scope-filters"><label>Учебный период<select value={periodId ?? ""} onChange={event => router.push(event.target.value ? `/materials?periodId=${encodeURIComponent(event.target.value)}` : "/materials")}><option value="">Все доступные периоды</option>{periods.state.kind === "ready" && periods.state.value.data.items.map(period => <option key={period.periodId} value={period.periodId}>{period.label}</option>)}</select></label><label>Дисциплина<select value={offeringId ?? ""} disabled={!periodId || offerings.state.kind !== "ready"} onChange={event => router.push(event.target.value ? `/materials?periodId=${encodeURIComponent(periodId!)}&offeringId=${encodeURIComponent(event.target.value)}` : `/materials?periodId=${encodeURIComponent(periodId!)}`)}><option value="">Все дисциплины</option>{offerings.state.kind === "ready" && offerings.state.value.data.items.map(item => <option key={item.offeringId} value={item.offeringId}>{item.title}</option>)}</select></label></div>
+    <div className="catalog-scope-filters"><label>Учебный период<select value={periodId ?? ""} onChange={event => router.push(event.target.value ? `/materials?periodId=${encodeURIComponent(event.target.value)}` : "/materials")}><option value="">Все доступные периоды</option>{periods.state.kind === "ready" && periods.state.value.data.items.map(period => <option key={period.periodId} value={period.periodId}>{period.label}</option>)}</select></label><label>Дисциплина<select value={offeringId ?? ""} disabled={periods.state.kind !== "ready"} onChange={event => changeDiscipline(event.target.value)}><option value="">Все дисциплины</option>{periods.state.kind === "ready" && periods.state.value.data.items.filter(period => !periodId || period.periodId === periodId).map(period => {
+      const options = disciplineOptions[period.periodId];
+      return <optgroup key={period.periodId} label={period.label}>
+        <DisciplineOptionsLoader periodId={period.periodId} onLoad={receiveOptions} />
+        {options?.kind === "ready" ? options.value.data.items.map(item => <option key={item.offeringId} value={item.offeringId}>{item.title}</option>) : <option disabled>{options?.kind === "error" ? "Дисциплины недоступны" : "Загрузка дисциплин…"}</option>}
+      </optgroup>;
+    })}</select></label></div>
     {unitId && <p className="notice notice-info">Показаны материалы выбранной самостоятельной учебной единицы. <Link href="/materials">Смотреть весь каталог</Link></p>}
-    <MaterialCatalog key={path} path={path} />
+    <MaterialCatalog key={path} path={path} search={search} setSearch={setSearch} format={format} setFormat={setFormat} resetFilters={resetFilters} />
   </main>;
 }

@@ -46,7 +46,7 @@ export function CalendarMonth({ query, from, to, today }: { query: string; from:
         <div className="calendar-month" aria-label="Дни месяца">{days.map(on => {
           const outside = on < bounds.from || on > bounds.to;
           const entries = outside ? [] : matches(on);
-          return <button type="button" key={on} disabled={outside || loading} className={`calendar-day ${outside ? "calendar-day-outside" : ""} ${on === today ? "calendar-day-today" : ""} ${on === selected ? "calendar-day-selected" : ""}`} aria-pressed={on === selected} aria-label={`${formatDay(on)}${complete && !outside ? `, событий: ${entries.length}` : ""}`} onClick={() => setSelected(on)}>
+          return <button type="button" key={on} disabled={outside || loading} className={`calendar-day ${outside ? "calendar-day-outside" : ""} ${on === selected ? "calendar-day-selected" : ""}`} aria-pressed={on === selected} aria-label={`${formatDay(on)}${complete && !outside ? `, событий: ${entries.length}` : ""}`} onClick={() => setSelected(on)}>
             <time dateTime={on}>{Number(on.slice(-2))}</time>
             <span className="calendar-desktop-titles">{entries.slice(0, 2).map(item => <span key={item.eventKey}>{item.title}</span>)}{complete && entries.length > 2 && <span>Ещё {entries.length - 2}</span>}</span>
             {complete && entries.length > 0 && <span className="calendar-mobile-count" aria-hidden="true">{entries.length}</span>}

@@ -198,7 +198,7 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
       {ready && session && cache ? <RemoteCacheProvider cache={cache}>
         <div className={`cabinet-frame${pathname === "/assistant" ? " cabinet-frame-chat" : ""}`}>
           <aside className="sidebar">
-            <div className="sidebar-brand"><Brand /><span>Личный кабинет студента</span></div>
+            <div className="sidebar-brand"><Brand href="/dashboard" /><span>Личный кабинет студента</span></div>
             <nav aria-label="Разделы кабинета">{links()}</nav>
             <div className="sidebar-bottom">
               <Link href="/profile" prefetch={false} onMouseEnter={() => prefetch("/profile")} onFocus={() => prefetch("/profile")} aria-current={pathname.startsWith("/profile") ? "page" : undefined}><UserRound size={20} aria-hidden="true" />Профиль</Link>
@@ -209,7 +209,7 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
           <div className="cabinet-main">
             <header className="cabinet-header">
               <Button variant="quiet" className="menu-button" ref={menuButton} onClick={() => setMenu(true)} aria-label="Открыть меню"><Menu /></Button>
-              <Brand compact />
+              <Brand compact href="/dashboard" />
               <span className="prototype-label">Конкурсный прототип</span>
               <HeaderBreadcrumbs pathname={pathname} />
               <HeaderAssistantSearch />
