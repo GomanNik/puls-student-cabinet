@@ -19,6 +19,25 @@ beforeEach(() => setClientSessionScope("student-a"));
 afterEach(() => { setClientSessionScope(null); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("кэш данных только в памяти подтверждённой сессии", () => {
+  it("собирает занятия всех страниц недельного расписания без потерь", async () => {
+    const scheduleSchema = z.object({ data: z.object({ items: z.array(z.object({ scheduleId: z.string() })), nextCursor: z.string().nullable(), isComplete: z.boolean() }), meta: z.object({ completeness: z.boolean() }) });
+    const fetcher = vi.fn((input: RequestInfo | URL) => {
+      const second = new URL(String(input), "https://localhost").searchParams.has("cursor");
+      const start = second ? 20 : 0, end = second ? 25 : 20;
+      return Promise.resolve(new Response(JSON.stringify({
+        data: { items: Array.from({ length: end - start }, (_, index) => ({ scheduleId: `lesson-${start + index}` })), nextCursor: second ? null : "next", isComplete: true },
+        meta: { completeness: true },
+      }), { status: 200, headers: { "Content-Type": "application/json", "X-Puls-Session-Scope": "student-a" } }));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const cache = new RemoteCache("student-a");
+    const entry = cache.entry("/schedule?from=2026-11-16&to=2026-11-22&limit=20", scheduleSchema, true);
+    await cache.ensure(entry);
+    expect(entry.state).toMatchObject({ kind: "ready", value: { data: { items: Array.from({ length: 25 }, (_, index) => ({ scheduleId: `lesson-${index}` })), nextCursor: null } } });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    cache.dispose();
+  });
+
   it("не склеивает материалы и работы одной дисциплины при добавлении страницы", () => {
     const cache = new RemoteCache("student-a");
     const entry = cache.entry("/materials", z.object({ data: z.object({ items: z.array(z.any()) }) }));

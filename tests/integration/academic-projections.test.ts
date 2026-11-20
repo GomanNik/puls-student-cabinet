@@ -34,6 +34,27 @@ async function subject(auth: AuthContext, title: string, archived = false) {
 }
 
 describe("официальные учебные проекции и частичная доступность", () => {
+  it("личные группы двух студентов различаются, а курсоры сохраняют весь период", async () => {
+    const authService = new AuthService(database(), readConfig());
+    const groups = await Promise.all([a, b].map(async auth => (await authService.profile(auth)).group));
+    expect(groups).toEqual(["ПИ-24-1", "ИК-23-2"]);
+    const range = { from: "2026-11-16", to: "2026-11-29" };
+    for (const auth of [a, b]) {
+      const service = await learningService(auth, admin);
+      const expected = await service.schedule.list(range, 100);
+      const items = [];
+      let cursor: string | undefined;
+      do {
+        const page = await service.schedule.list(range, 20, cursor);
+        items.push(...page.data.items);
+        cursor = page.data.nextCursor ?? undefined;
+      } while (cursor);
+      expect(items.map(item => item.scheduleId)).toEqual(expected.data.items.map(item => item.scheduleId));
+      expect(new Set(items.map(item => item.scheduleId)).size).toBe(items.length);
+      if (auth === a) expect(items.length).toBeGreaterThan(20);
+    }
+  });
+
   it("API занятий английского завершает выборку после 16 записей и сводка совпадает с журналом", async () => {
     for (const auth of [a, b]) {
       const { service, binding, periodId } = await subject(auth, "Иностранный язык");

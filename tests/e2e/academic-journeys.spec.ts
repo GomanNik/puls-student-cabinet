@@ -27,9 +27,9 @@ test("недельное расписание перелистывается и 
   await enter(page);
   await page.goto("/schedule?date=2026-11-17");
   await expect(page.getByRole("heading", { name: "Расписание", level: 1 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Выберите группу, преподавателя или аудиторию" })).toBeVisible();
-  await expect(page.locator(".agenda-day")).toHaveCount(0);
   const profile = (await (await page.request.get("/api/v1/profile")).json()).data as { group: string };
+  await expect(page.locator(".agenda-context")).toHaveText(`Расписание группы ${profile.group}`);
+  await expect(page.locator(".agenda-day")).toHaveCount(7);
   await page.getByRole("searchbox", { name: "Поиск: группа" }).fill(profile.group);
   await page.getByLabel("Варианты поиска").getByRole("button", { name: new RegExp(profile.group) }).click();
   await expect(page.locator(".agenda-day")).toHaveCount(7);
@@ -60,7 +60,7 @@ test("недельное расписание перелистывается и 
   await page.screenshot({ path: info.outputPath("lesson-with-material-390.png"), fullPage: true });
 });
 
-test("три режима поиска расписания охватывают все страницы недельной выборки", async ({ page }) => {
+test("три режима поиска расписания показывают личную недельную выборку", async ({ page }) => {
   await enter(page);
   const endpoint = "/api/v1/schedule?from=2026-11-16&to=2026-11-22&limit=100";
   const response = await page.request.get(endpoint);
@@ -68,17 +68,12 @@ test("три режима поиска расписания охватывают
   const entries = (await response.json()).data.items as Array<{ scheduleId: string; teacherLabel: string | null; room: string | null; status: string; plannedStart: string | null }>;
   const active = entries.filter(item => item.status !== "CANCELLED");
   expect(active.length).toBeGreaterThan(1);
-  let cursorRequests = 0;
-  page.on("request", request => {
-    if (request.url().includes("/api/v1/schedule?") && new URL(request.url()).searchParams.has("cursor")) cursorRequests++;
-  });
   await page.goto("/schedule?date=2026-11-17");
-  await expect(page.locator(".agenda-lesson")).toHaveCount(0);
+  await expect(page.locator(".agenda-lesson")).toHaveCount(active.length);
   const profile = (await (await page.request.get("/api/v1/profile")).json()).data as { group: string };
   await page.getByRole("searchbox", { name: "Поиск: группа" }).fill(profile.group);
   await page.getByLabel("Варианты поиска").getByRole("button", { name: new RegExp(profile.group) }).click();
   await expect(page.locator(".agenda-lesson")).toHaveCount(active.length);
-  expect(cursorRequests).toBeGreaterThan(0);
   const overlapPair = active.flatMap((first, index) => active.slice(index + 1).map(second => [first, second] as const))
     .find(([first, second]) => first.plannedStart && first.plannedStart === second.plannedStart);
   expect(overlapPair, "совпадающие занятия должны остаться отдельными записями").toBeTruthy();

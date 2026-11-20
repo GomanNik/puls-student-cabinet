@@ -42,7 +42,7 @@ test("главная соответствует композиции и откр
   await expect(page).toHaveURL(/\/assistant$/);
   await page.goBack();
   for (const [selector, destination] of [
-    [".home-lesson-head a", /\/schedule$/],
+    [".home-lesson-head a", /\/schedule(?:\?date=\d{4}-\d{2}-\d{2})?$/],
     [".home-news-feature", /\/announcements\/[^/]+$/],
     [".home-material-list a", /\/materials\/[^/]+$/],
   ] as const) {
@@ -87,7 +87,7 @@ test("контрольные снимки разделов 1440 и 390 px без
     await enter(page);
     for (const [name, route, ready] of [
       ["dashboard", "/dashboard", ".home-next-lesson"],
-      ["schedule", "/schedule?date=2026-11-17", ".agenda-empty-selection"],
+      ["schedule", "/schedule?date=2026-11-17", ".agenda-context"],
       ["study", "/study", ".study-r9-section"],
       ["materials", "/materials", ".catalog-layout"],
       ["requests", "/requests", ".operation-form-card"],
@@ -132,7 +132,7 @@ test("основные разделы сохраняют разметку на �
     await enter(page);
     for (const [name, route, ready] of [
       ["dashboard", "/dashboard", ".home-next-lesson"],
-      ["schedule", "/schedule?date=2026-11-17", ".agenda-empty-selection"],
+      ["schedule", "/schedule?date=2026-11-17", ".agenda-context"],
       ["study", "/study", ".study-r9-section"],
       ["materials", "/materials", ".catalog-layout"],
       ["requests", "/requests", ".operation-form-card"],

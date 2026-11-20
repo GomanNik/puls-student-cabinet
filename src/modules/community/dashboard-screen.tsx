@@ -10,6 +10,7 @@ import { PageHero } from "@/shared/ui/page-hero";
 import { useStudentDisplayName } from "@/shared/ui/student-identity";
 import { academicDate, targetHref } from "@/shared/ui/academic";
 import { formatDay, localDay } from "@/shared/lib/dates";
+import { scheduleHref } from "@/modules/schedule/selection";
 
 function PanelTitle({ icon: Icon, title, href, link }: {
   icon: typeof Clock3; title: string; href: string; link: string;
@@ -73,7 +74,7 @@ export function DashboardScreen() {
     {meta.sourceStatus === "PARTIAL" && <p role="status" className="notice notice-warning">Часть источников недоступна или неполна. Показаны только подтверждённые сведения.</p>}
     <div className="home-dashboard"><div className="home-grid home-grid-columns"><div className="home-column">
         <section className="home-next-lesson" aria-labelledby="home-lesson-title">
-          <div className="home-lesson-head"><h2 id="home-lesson-title"><CalendarDays size={22} aria-hidden="true" />Ближайшее занятие</h2><Link href="/schedule">В расписании <ArrowRight size={18} aria-hidden="true" /></Link></div>
+          <div className="home-lesson-head"><h2 id="home-lesson-title"><CalendarDays size={22} aria-hidden="true" />Ближайшее занятие</h2><Link href={scheduleHref(nearest?.plannedStart, nearest?.timeZone)}>В расписании <ArrowRight size={18} aria-hidden="true" /></Link></div>
           {nearest ? <div className="home-lesson-body">
             <div className="home-lesson-date">{date ? <time dateTime={date.on}><span>{date.weekday}</span><strong>{date.day}</strong><span>{date.month}</span></time> : <span>Дата не указана</span>}</div>
             <div className="home-lesson-time"><strong>{lessonTime(nearest.plannedStart, nearest.timeZone) ?? "Время не указано"}{nearest.plannedEnd && lessonTime(nearest.plannedEnd, nearest.timeZone) ? ` – ${lessonTime(nearest.plannedEnd, nearest.timeZone)}` : ""}</strong></div>

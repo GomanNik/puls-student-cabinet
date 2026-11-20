@@ -12,6 +12,7 @@ import { Button } from "@/shared/ui/button";
 import { PageHero } from "@/shared/ui/page-hero";
 import { RemoteState } from "@/shared/ui/remote-state";
 import { ScheduleDetailPanel } from "@/modules/schedule/detail-panel";
+import { currentSelection, scheduleContextLabel, type ScheduleMode } from "@/modules/schedule/selection";
 
 const dayName = (day: string) => new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", weekday: "long" }).format(new Date(`${day}T12:00:00Z`));
 const compactDate = (day: string) => new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", day: "numeric", month: "long" }).format(new Date(`${day}T12:00:00Z`));
@@ -33,14 +34,16 @@ function Lesson({ entry, href }: { entry: ScheduleEntry; href: string }) {
 }
 
 function ScheduleData({ from, to, today, navigate, open }: { from: string; to: string; today: string; navigate: (day: string) => void; open: (id: string) => string }) {
-  const [mode, setMode] = useState<"group" | "teacher" | "room">("group");
+  const [mode, setMode] = useState<ScheduleMode>("group");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [ownGroup, setOwnGroup] = useState(true);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
-  const path = query.trim() || selected ? `/schedule?from=${from}&to=${to}&limit=20` : null;
+  const path = `/schedule?from=${from}&to=${to}&limit=20`;
   const { state, reload } = useRemote(path, ScheduleListResponseSchema, true);
-  const { state: profileState } = useRemote("/profile", profileResponseSchema);
+  const { state: profileState, reload: reloadProfile } = useRemote("/profile", profileResponseSchema);
   const group = profileState.kind === "ready" ? profileState.value.data.group : null;
+  const selection = currentSelection(mode, selected, ownGroup, group);
 
   const schedule = state.kind === "ready" ? state.value : null;
   const active = schedule?.data.items.filter(item => item.status !== "CANCELLED") ?? [];
@@ -50,21 +53,23 @@ function ScheduleData({ from, to, today, navigate, open }: { from: string; to: s
   const choices = mode === "group" ? (group ? [group] : []) : mode === "teacher" ? teachers : rooms;
   const search = normalize(query);
   const suggestions = choices.filter(value => normalize(value).includes(search)).slice(0, 8);
-  const filtered = selected ? active.filter(item => mode === "group" ? selected === group : mode === "teacher" ? item.teacherLabel === selected : item.room === selected) : [];
+  const filtered = selection ? active.filter(item => selection.mode === "group" ? selection.value === group : selection.mode === "teacher" ? item.teacherLabel === selection.value : item.room === selection.value) : [];
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
-  const reset = () => { setQuery(""); setSelected(null); setSuggestionsOpen(false); };
+  const reset = () => { setQuery(""); setSelected(null); setOwnGroup(false); setSuggestionsOpen(false); };
+  const returnToGroup = () => { setMode("group"); setQuery(""); setSelected(null); setOwnGroup(true); setSuggestionsOpen(false); };
 
   return <>
     <section className="agenda-toolbar" aria-label="Управление расписанием">
       <div className="agenda-week-control" aria-label="Переключение недель"><span className="agenda-week-label">Неделя</span><button type="button" onClick={() => navigate(addDays(from, -7))} aria-label="Предыдущая неделя"><ChevronLeft size={20} /></button><strong>{compactDate(from)} — {formatDay(to)}</strong><button type="button" onClick={() => navigate(addDays(from, 7))} aria-label="Следующая неделя"><ChevronRight size={20} /></button><button type="button" className="agenda-current" aria-current={from === weekStart(today) ? "date" : undefined} onClick={() => navigate(today)}>Текущая неделя</button></div>
-      <div className="agenda-mode" role="group" aria-label="Режим поиска">{(["group", "teacher", "room"] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} onClick={() => { setMode(value); reset(); }}>{labels[value]}</button>)}</div>
+      <div className="agenda-mode" role="group" aria-label="Режим поиска">{(["group", "teacher", "room"] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} onClick={() => { setMode(value); reset(); if (value === "group") setOwnGroup(true); }}>{labels[value]}</button>)}</div>
       <div className="agenda-search-wrap" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSuggestionsOpen(false); }}>
-        <label className="agenda-search"><Search size={18} aria-hidden="true" /><input type="search" value={query} onChange={event => { setQuery(event.target.value); setSelected(null); setSuggestionsOpen(true); }} onFocus={() => setSuggestionsOpen(true)} placeholder={mode === "group" ? "Введите номер группы" : mode === "teacher" ? "Введите фамилию преподавателя" : "Введите номер аудитории"} aria-label={`Поиск: ${labels[mode].toLowerCase()}`} />{query && <button type="button" onClick={reset} aria-label="Очистить поиск">×</button>}</label>
+        <label className="agenda-search"><Search size={18} aria-hidden="true" /><input type="search" value={query} onChange={event => { setQuery(event.target.value); setSelected(null); setOwnGroup(false); setSuggestionsOpen(true); }} onFocus={() => setSuggestionsOpen(true)} placeholder={mode === "group" ? "Введите номер группы" : mode === "teacher" ? "Введите фамилию преподавателя" : "Введите номер аудитории"} aria-label={`Поиск: ${labels[mode].toLowerCase()}`} />{(query || selection) && <button type="button" onClick={reset} aria-label="Очистить поиск">×</button>}</label>
         {suggestionsOpen && search && !selected && <div className="agenda-suggestions" aria-label="Варианты поиска">{state.kind === "loading" || (mode === "group" && profileState.kind === "loading") ? <p>Загружаем варианты…</p> : state.kind === "error" || (mode === "group" && profileState.kind === "error") ? <p>Не удалось получить варианты поиска</p> : suggestions.length ? suggestions.map(value => <button type="button" key={value} onMouseDown={event => event.preventDefault()} onClick={() => { setQuery(value); setSelected(value); setSuggestionsOpen(false); }}><small>{labels[mode]}</small><strong>{value}</strong><span>›</span></button>) : <p>Совпадений среди доступных занятий нет</p>}</div>}
       </div>
     </section>
-    {state.kind === "error" ? <RemoteState state={state} retry={reload} /> : !selected ? <section className="agenda-empty-selection" aria-label="Расписание не выбрано"><span className="agenda-empty-icon" aria-hidden="true"><CalendarSearch size={112} strokeWidth={1.35} /></span><h2>Выберите группу, преподавателя или аудиторию</h2><p>Расписание появится после выбора параметра</p></section> : state.kind === "loading" ? <RemoteState state={state} retry={reload} /> : <>
+    {state.kind === "error" ? <RemoteState state={state} retry={reload} /> : profileState.kind !== "ready" ? <RemoteState state={profileState} retry={reloadProfile} /> : !selection ? <section className="agenda-empty-selection" aria-label="Расписание не выбрано"><span className="agenda-empty-icon" aria-hidden="true"><CalendarSearch size={112} strokeWidth={1.35} /></span><h2>Выберите группу, преподавателя или аудиторию</h2><p>Расписание появится после выбора параметра</p>{group && <button type="button" className="button button-secondary" onClick={returnToGroup}>Вернуться к расписанию своей группы</button>}</section> : state.kind === "loading" ? <RemoteState state={state} retry={reload} /> : <>
       {schedule?.meta.sourceStatus === "PARTIAL" && <div className="notice notice-warning" role="status"><strong>Показаны подтверждённые сведения</strong><p>{schedule.meta.partialErrors?.some(e => e.dataset === "CONTEXT") ? "Не удалось однозначно определить официальную подгруппу для части дисциплин. Для них показаны только занятия всей группы." : "Часть сведений или история изменений недоступна. Пустой список не подтверждает отсутствие занятий."}</p></div>}
+      <p className="agenda-context" role="status"><CalendarSearch size={20} aria-hidden="true" /><strong>{scheduleContextLabel(selection)}</strong></p>
       <section className="agenda-panel" aria-labelledby="agenda-title"><header className="agenda-panel-head"><div><span className="page-hero-eyebrow">НЕДЕЛЬНЫЙ ПЛАН</span><h2 id="agenda-title">Занятия недели</h2></div><span className="agenda-count">{filtered.length} занятий</span></header>
         {days.map(day => {
           const items = filtered.filter(item => item.plannedStart && item.timeZone && localDay(item.plannedStart, item.timeZone) === day);

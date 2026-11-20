@@ -912,6 +912,9 @@ body { min-width:0; }
 .agenda-empty-icon { display:grid; place-items:center; width:166px; height:166px; border-radius:50%; color:#C21F51; background:#FBEFF2; }
 .agenda-empty-selection h2 { color:#2D1622; font-size:24px; font-weight:800; }
 .agenda-empty-selection p { color:#8B6575; font-size:18px; }
+.agenda-context { display:flex; align-items:center; gap:10px; width:min(100%,1100px); margin:0 auto 10px; padding:10px 14px; border:1px solid #EADDE1; border-radius:10px; color:#6A2B43; background:#FFF7F9; font-size:14px; line-height:1.35; }
+.agenda-context svg { flex:none; color:#A51C49; }
+.agenda-context strong { overflow-wrap:anywhere; }
 .agenda-panel { width:min(100%,1100px); min-width:0; margin:0 auto; overflow:hidden; border:1px solid #E9DCE1; border-radius:16px; background:#FFF; box-shadow:0 4px 17px rgb(39 27 35 / 3.5%); }
 .agenda-panel-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:17px 20px; border-bottom:1px solid #EEE4E8; background:linear-gradient(100deg,#FFFDFC,#FBF4F6); }
 .agenda-panel-head h2 { margin:4px 0 0; color:#35232D; font:700 23px/1.1 var(--puls-serif); }
