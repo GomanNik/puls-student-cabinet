@@ -46,7 +46,17 @@ function AssistantAnswerView({ answer }: { answer: AssistantAnswer }) {
       )}
 
       {answer.notice && <p className="assistant-answer-notice">{answer.notice}</p>}
-      {answer.completeness !== "COMPLETE" && <p className="assistant-incomplete">Часть источников недоступна. Отсутствие результата не подтверждает отсутствие сведений.</p>}
+      {answer.completeness === "PARTIAL" && <p className="assistant-incomplete">Доступна только часть запрошенных сведений.</p>}
+      {answer.completeness === "UNKNOWN" && answer.targets.length > 0 && <p className="assistant-incomplete">Полнота сведений не подтверждена.</p>}
+      {answer.diagnostics && <details className="assistant-diagnostics"><summary>Диагностика тестового чата</summary><dl>
+        <dt>Провайдер</dt><dd>{answer.diagnostics.provider}</dd>
+        <dt>Модель</dt><dd>{answer.diagnostics.model ?? "Не вызывалась"}</dd>
+        <dt>Тип вопроса</dt><dd>{answer.diagnostics.topic}</dd>
+        <dt>Контекст модели</dt><dd>{answer.diagnostics.contextSent ? "Передан" : "Не передавался"}</dd>
+        <dt>Источники</dt><dd>{answer.diagnostics.sources.map(source => `${source.name}: ${source.state}, ${source.count}`).join("; ") || "Не запрашивались"}</dd>
+        <dt>Время ответа</dt><dd>{answer.diagnostics.elapsedMs} мс</dd>
+        {answer.diagnostics.fallback && <><dt>Проверка ответа</dt><dd>{answer.diagnostics.fallback}</dd></>}
+      </dl></details>}
     </div>
   );
 }

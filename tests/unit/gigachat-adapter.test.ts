@@ -12,6 +12,18 @@ beforeEach(() => { vi.stubEnv("GIGACHAT_AUTHORIZATION_KEY", "test-only-credentia
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("серверный адаптер GigaChat без обращения к внешней сети", () => {
+  it("планирует учебный вопрос с историей и ограниченным каталогом дисциплин", async () => {
+    let body: { messages: Array<{ role: string; content: string }> } | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      if (url.includes("oauth")) return oauth();
+      body = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ topic: "TEACHERS", discipline: "История России", teacher: null, followUp: true }) } }] }), { status: 200 });
+    }));
+    const plan = await (await provider()).plan("А кто её ведёт?", [{ role: "user", content: "Расскажи об истории России" }], ["История России"]);
+    expect(plan).toEqual({ topic: "TEACHERS", discipline: "История России", teacher: null, followUp: true });
+    expect(body!.messages.map(item => item.role)).toEqual(["system", "user", "user"]);
+    expect(JSON.parse(body!.messages.at(-1)!.content).availableDisciplines).toEqual(["История России"]);
+  });
   it("получает OAuth-токен и просит выбрать только ID переданных разрешённых фактов", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
@@ -119,10 +131,33 @@ describe("серверный адаптер GigaChat без обращения �
     expect(completions).toBe(2);
   });
 
+  it("503 повторяет один раз, а пустой ответ отвергает как некорректный", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("oauth")) return oauth();
+      calls++;
+      return calls === 1 ? new Response("", { status: 503 }) : new Response(JSON.stringify({ choices: [{ message: { content: "" } }] }), { status: 200 });
+    }));
+    await expect((await provider()).answer("Вопрос", facts, [])).rejects.toMatchObject({ kind: "INVALID_RESPONSE" });
+    expect(calls).toBe(3);
+  });
+
   it("различает тайм-аут и недоступность сети без текста исходной ошибки", async () => {
     for (const [name, kind] of [["TimeoutError", "TIMEOUT"], ["TypeError", "UNAVAILABLE"]] as const) {
       vi.stubGlobal("fetch", vi.fn(async () => { const failure = new Error("private transport details"); failure.name = name; throw failure; }));
       await expect((await provider()).answer("Вопрос", [], [])).rejects.toMatchObject({ kind });
     }
+  });
+});
+
+
+describe("выбор провайдера", () => {
+  it("по умолчанию использует GigaChat; mock требует явного значения", async () => {
+    const { assistantProviderMode } = await import("@/server/integrations/assistant-provider");
+    vi.stubEnv("PULS_AI_PROVIDER", undefined);
+    expect(assistantProviderMode()).toBe("GIGACHAT");
+    expect(assistantProviderMode("DEMO_MOCK")).toBe("DEMO_MOCK");
+    expect(() => assistantProviderMode("GIGACHATT")).toThrow();
+    expect(() => assistantProviderMode("")).toThrow();
   });
 });

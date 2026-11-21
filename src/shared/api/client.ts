@@ -17,7 +17,7 @@ const messages: Record<string, string> = {
 };
 // OGE apiError: типизированная ошибка; технический message больше не показывается.
 export class ApiError extends Error {
-  constructor(readonly status: number, readonly code: string, readonly requestId?: string) {
+  constructor(readonly status: number, readonly code: string, readonly requestId?: string, readonly diagnosticDetail?: string) {
     super(messages[code] ?? "Сейчас не удаётся получить данные. Попробуйте ещё раз.");
     this.name = "ApiError";
   }
@@ -99,7 +99,8 @@ export async function api<T>(path: string, schema: z.ZodType<T> | null, options:
     if (epoch !== sessionEpoch || request.signal?.aborted) throw new DOMException("Запрос устарел", "AbortError");
     if (!response.ok) {
       const code = typeof body?.error?.code === "string" ? body.error.code : "INTERNAL_ERROR";
-      throw new ApiError(response.status, code);
+      const detail = process.env.NODE_ENV === "development" && path === "/assistant/ask" && typeof body?.error?.message === "string" ? body.error.message.slice(0, 300) : undefined;
+      throw new ApiError(response.status, code, undefined, detail);
     }
     if (!schema) return undefined as T;
     const parsed = schema.safeParse(body);
@@ -114,5 +115,5 @@ export async function api<T>(path: string, schema: z.ZodType<T> | null, options:
   }
 }
 export function safeClientMessage(error: unknown) {
-  return error instanceof ApiError ? error.message : "Сейчас не удаётся выполнить действие. Попробуйте ещё раз.";
+  return error instanceof ApiError ? error.diagnosticDetail ? `${error.diagnosticDetail} (${error.code}, HTTP ${error.status})` : error.message : "Сейчас не удаётся выполнить действие. Попробуйте ещё раз.";
 }

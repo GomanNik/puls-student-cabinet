@@ -24,33 +24,6 @@ const ACTIVE_SCOPE_KEY = "puls-assistant-chat-scope";
 const MAX_MESSAGES = 40;
 const MAX_STORAGE_LENGTH = 140_000;
 const MAX_DRAFT_LENGTH = 2_000;
-const DEMO_MODE = true;
-const DEMO_NOTICE = "Демонстрационный ответ: это подсказка по разделам, персональные учебные сведения не проверялись.";
-
-function demoAnswer(question: string): AssistantAnswer {
-  const text = question.toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
-  let reply: string;
-  if (/расписан|заняти|пары|аудитори|преподавател/.test(text))
-    reply = "Откройте раздел «Расписание». Там можно выбрать неделю и найти занятия по группе, преподавателю или аудитории. Подробности занятия открываются из расписания.";
-  else if (/материал|файл|конспект|лекци|скачать/.test(text))
-    reply = "Учебные файлы и ссылки собраны в разделе «Материалы». Откройте нужный материал, чтобы посмотреть его описание и доступные действия.";
-  else if (/срок|дедлайн|работ|задан|аттестац/.test(text))
-    reply = "Сроки учебных работ смотрите в разделе «Учёба» внутри нужной дисциплины. Даты также можно найти в «Календаре». Актуальность конкретного срока проверяйте на соответствующей странице.";
-  else if (/заявлен|справк|заявк/.test(text))
-    reply = "Формы и история заявок находятся в разделе «Заявления и справки». Статус каждой отправленной заявки показан в её подробностях.";
-  else if (/обращен|переписк|деканат|сообщен/.test(text))
-    reply = "В разделе «Обращения» можно создать обращение и открыть связанную с ним переписку. Ответы и статусы доставки показаны в этой цепочке.";
-  else if (/уведомлен|объявлен/.test(text))
-    reply = "Новые сообщения о событиях и изменениях смотрите в разделе «Уведомления». Объявления доступны из соответствующих уведомлений.";
-  else if (/календар|событи|экспорт/.test(text))
-    reply = "В разделе «Календарь» доступны события и учебные даты. Выберите период и при необходимости экспортируйте календарь.";
-  else if (/профил|личн/.test(text))
-    reply = "Основные сведения об аккаунте и обучении доступны в разделе «Профиль».";
-  else
-    reply = "Я пока отвечаю в демонстрационном режиме. Спросите, где найти расписание, материалы, сроки работ, заявления, обращения, уведомления или календарь.";
-  return { text: reply, providerMode: "DEMO_MOCK", completeness: "COMPLETE", targets: [], notice: DEMO_NOTICE };
-}
-
 type UserMessage = {
   id: string;
   role: "user";
@@ -130,7 +103,7 @@ function completedHistory(messages: AssistantChatMessage[], currentId: string) {
   const turns: Array<{ role: "user" | "assistant"; content: string }> = [];
   for (let index = 0; index + 1 < previous.length; index += 2) {
     const user = previous[index], assistant = previous[index + 1];
-    if (user.role !== "user" || assistant.role !== "assistant" || assistant.status !== "ready" || assistant.answer?.providerMode !== "GIGACHAT") continue;
+    if (user.role !== "user" || assistant.role !== "assistant" || assistant.status !== "ready" || !assistant.answer) continue;
     turns.push({ role: "user", content: user.text.slice(0, 700) }, { role: "assistant", content: assistant.answer.text.slice(0, 700) });
   }
   return turns.slice(-8);
@@ -287,7 +260,7 @@ export function AssistantChatProvider({ scope, absoluteExpiresAt, children }: { 
     requestsRef.current.set(assistantMessageId, controller);
     setActiveCount(requestsRef.current.size);
     try {
-      const result: AssistantAnswer = DEMO_MODE ? demoAnswer(question) : (await api("/assistant/ask", AssistantResponseSchema, {
+      const result: AssistantAnswer = (await api("/assistant/ask", AssistantResponseSchema, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: question, contextHint: "GENERAL", history: completedHistory(messagesRef.current, assistantMessageId) }),

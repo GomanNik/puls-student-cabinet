@@ -4830,6 +4830,8 @@ components:
           maxItems: 10
         notice:
           type: string
+        diagnostics:
+          $ref: '#/components/schemas/AssistantDiagnostics'
       additionalProperties: false
       required:
         - text
@@ -4837,6 +4839,33 @@ components:
         - completeness
         - targets
       description: Нет изменяющих команд и постоянного чата.
+    AssistantDiagnostics:
+      type: object
+      description: Выдаётся только в локальном режиме разработки при включённой диагностике.
+      properties:
+        topic:
+          type: string
+        provider:
+          type: string
+          enum: [GIGACHAT, DEMO_MOCK]
+        model:
+          type: [string, 'null']
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              name: {type: string}
+              state: {type: string, enum: [FOUND, EMPTY, PARTIAL, UNAVAILABLE]}
+              count: {type: integer, minimum: 0}
+            required: [name, state, count]
+            additionalProperties: false
+        contextSent: {type: boolean}
+        elapsedMs: {type: integer, minimum: 0}
+        fallback:
+          type: [string, 'null']
+      required: [topic, provider, model, sources, contextSent, elapsedMs, fallback]
+      additionalProperties: false
     PeriodPage:
       type: object
       properties:
