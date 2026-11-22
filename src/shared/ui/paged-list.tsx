@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type AriaRole, type ReactNode } from "react";
 import type { z } from "zod";
 import { api, safeClientMessage } from "@/shared/api/client";
 import { useRemote } from "@/shared/api/use-remote";
@@ -7,7 +7,7 @@ import type { DataState, ResponseMeta } from "@/shared/contracts/student-api";
 import { RemoteState } from "./remote-state";
 import { Button } from "./button";
 type Page = { data: { items: unknown[]; nextCursor: string | null; isComplete: boolean | null; dataState: DataState }; meta: ResponseMeta };
-export function PagedList<T extends Page>({ path, schema, renderItem, renderSummary, empty = "Подтверждённых записей нет.", pollWhile }: { path: string; schema: z.ZodType<T>; renderItem: (item: T["data"]["items"][number]) => ReactNode; renderSummary?: (data: T["data"]) => ReactNode; empty?: string; pollWhile?: (item: T["data"]["items"][number]) => boolean }) {
+export function PagedList<T extends Page>({ path, schema, renderItem, renderSummary, empty = "Подтверждённых записей нет.", pollWhile, listClassName, listRole }: { path: string; schema: z.ZodType<T>; renderItem: (item: T["data"]["items"][number]) => ReactNode; renderSummary?: (data: T["data"]) => ReactNode; empty?: string; pollWhile?: (item: T["data"]["items"][number]) => boolean; listClassName?: string; listRole?: AriaRole }) {
   const { state, reload, setState, isCurrent, revision } = useRemote(path, schema);
   const key = `${path}:${revision}`;
   const [pageStatus, setPageStatus] = useState<{ key: string; busy: boolean; error: string | null }>({ key, busy: false, error: null }), pending = useRef<AbortController | null>(null);
@@ -33,5 +33,5 @@ export function PagedList<T extends Page>({ path, schema, renderItem, renderSumm
     } catch (error) { if (!controller.signal.aborted && isCurrent()) setPageStatus({ key, busy: false, error: safeClientMessage(error) }); }
     finally { if (pending.current === controller) { pending.current = null; if (!controller.signal.aborted) setPageStatus(current => current.key === key ? { ...current, busy: false } : current); } }
   }
-  return <>{meta.sourceStatus === "PARTIAL" && <p className="notice notice-warning" role="status">Сведения неполны. Показана только подтверждённая часть.</p>}{renderSummary?.(data)}<div className="record-list">{(data.items as Array<T["data"]["items"][number]>).map(renderItem)}</div>{!data.items.length && <p className="notice">{data.isComplete ? empty : "Сведения недоступны или неполны; отсутствие записей не подтверждено."}</p>}{error && <p className="notice notice-warning" role="alert">{error} Загруженные записи сохранены.</p>}{data.nextCursor && <Button variant="secondary" disabled={busy || state.refreshing} onClick={next}>{busy ? "Загружаем…" : "Показать ещё"}</Button>}</>;
+  return <>{meta.sourceStatus === "PARTIAL" && <p className="notice notice-warning" role="status">Сведения неполны. Показана только подтверждённая часть.</p>}{renderSummary?.(data)}<div className={["record-list", listClassName].filter(Boolean).join(" ")} role={listRole}>{(data.items as Array<T["data"]["items"][number]>).map(renderItem)}</div>{!data.items.length && <p className="notice">{data.isComplete ? empty : "Сведения недоступны или неполны; отсутствие записей не подтверждено."}</p>}{error && <p className="notice notice-warning" role="alert">{error} Загруженные записи сохранены.</p>}{data.nextCursor && <Button variant="secondary" disabled={busy || state.refreshing} onClick={next}>{busy ? "Загружаем…" : "Показать ещё"}</Button>}</>;
 }

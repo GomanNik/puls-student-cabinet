@@ -31,13 +31,16 @@ export async function WorksPage({ periodId, contextId, unit = false, searchParam
   }
   const summary = unit ? null : await service.schedule.summary(binding.period, binding.source.offeringId!);
   const subtitle = unit ? binding.period.label : `${binding.period.label} · ${summary?.subgroup.dataState === "READY" ? summary.subgroup.label ?? "Для всей группы" : "Официальная подгруппа не определена"}`;
-  const query = new URLSearchParams({ filter: f.filter, sort: f.sort, q: f.q });
-  if (page.data.nextCursor) query.set("cursor", page.data.nextCursor);
+  const pageHref = (cursor: string | null) => {
+    const query = new URLSearchParams({ filter: f.filter, sort: f.sort, q: f.q });
+    if (cursor) query.set("cursor", cursor);
+    return `${base}/works?${query.toString()}`;
+  };
   return <main id="main" className="workspace learning-r9-main discipline-page">
     <PageHero className="discipline-hero" title={binding.title} description={subtitle} image="study-overview.jpg" />
     {!unit && <OfferingTabs base={base} active="works" />}
     <section className="discipline-works-section" aria-labelledby="discipline-works-title">
-      <div className="discipline-panel-head"><h2 id="discipline-works-title">Работы</h2><span aria-live="polite">Показано: {page.data.items.length}{page.data.nextCursor ? " · есть ещё" : ""}</span></div>
+      <div className="discipline-panel-head"><h2 id="discipline-works-title">Работы</h2><span aria-live="polite">{page.data.isComplete === true ? `Всего работ: ${page.data.totalItems}` : `Доступно записей: ${page.data.totalItems}`}</span></div>
       <form className="work-filters" method="get" action={`${base}/works`}>
         <label>Название<input name="q" defaultValue={f.q} maxLength={120} placeholder="Поиск по названию" /></label>
         <label>Показать<select name="filter" defaultValue={f.filter}><option value="ALL">Все работы</option><option value="REVIEW">На проверке</option><option value="DUE">Со сроком</option><option value="RESULT">С результатом</option></select></label>
@@ -47,7 +50,11 @@ export async function WorksPage({ periodId, contextId, unit = false, searchParam
       {page.meta.sourceStatus === "PARTIAL" && <p className="notice notice-warning">Сведения неполны. Отсутствие совпадений не подтверждено.</p>}
       <div className="record-list discipline-work-list">{page.data.items.map(work => <WorkCard key={work.workId} work={work} detailed />)}</div>
       {!page.data.items.length && <p className="notice">{page.data.isComplete ? "Работ с выбранными условиями нет." : "Нет подтверждённых совпадений; часть сведений недоступна."}</p>}
-      {page.data.nextCursor && <Link className="button button-secondary" href={`${base}/works?${query}`} prefetch={false}>Следующая порция</Link>}
+      {page.data.totalPages > 1 && <nav className="work-pagination" aria-label="Страницы работ">
+        {page.data.previousCursor && <Link className="button button-secondary" href={pageHref(page.data.previousCursor)} prefetch={false}>← Предыдущая</Link>}
+        <span className="work-pagination-current">Страница {page.data.pageNumber} из {page.data.totalPages}</span>
+        {page.data.nextCursor && <Link className="button button-secondary" href={pageHref(page.data.nextCursor)} prefetch={false}>Следующая →</Link>}
+      </nav>}
     </section>
   </main>;
 }

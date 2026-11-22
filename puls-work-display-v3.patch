@@ -1,0 +1,472 @@
+diff --git a/src/app/(student)/materials/screen.tsx b/src/app/(student)/materials/screen.tsx
+index a83ae48..f016fdf 100644
+--- a/src/app/(student)/materials/screen.tsx
++++ b/src/app/(student)/materials/screen.tsx
+@@ -12,12 +12,12 @@ import { RemoteState } from "@/shared/ui/remote-state";
+ import { materialFormat } from "@/shared/lib/material-format";
+ 
+ function MaterialRow({ item }: { item: Material }) {
+-  const format = materialFormat(item);
+-  return <Link className="catalog-row" href={`/materials/${encodeURIComponent(item.materialId)}`} prefetch={false}>
++  const format = materialFormat(item), lessonId = item.relatedScheduleIds?.[0];
++  return <article className="catalog-row">
+     <span className={`catalog-file-symbol catalog-file-${format.toLowerCase()}`}>{item.kind === "LINK" ? <Link2 size={25} aria-hidden="true" /> : <FileText size={26} aria-hidden="true" />}<b>{format === "LINK" ? "URL" : format}</b></span>
+-    <span className="catalog-row-copy"><strong>{item.title}</strong><small>{item.kind === "LINK" ? "Внешний ресурс" : `Файл · ${format}`}</small></span>
+-    <span className="catalog-row-action">Подробнее <ArrowRight size={18} aria-hidden="true" /></span>
+-  </Link>;
++    <span className="catalog-row-copy"><strong><Link href={`/materials/${encodeURIComponent(item.materialId)}`} prefetch={false}>{item.title}</Link></strong><small>{item.kind === "LINK" ? "Внешний ресурс" : `Файл · ${format}`}</small>{lessonId && <small className="catalog-row-lesson"><Link href={`/schedule/${encodeURIComponent(lessonId)}`} prefetch={false}>Открыть занятие, к которому прикреплён материал</Link></small>}</span>
++    <Link className="catalog-row-action" href={`/materials/${encodeURIComponent(item.materialId)}`} prefetch={false}>Подробнее <ArrowRight size={18} aria-hidden="true" /></Link>
++  </article>;
+ }
+ function DisciplineOptionsLoader({ periodId, onLoad }: { periodId: string; onLoad: (id: string, state: Remote<OfferingListResponse>) => void }) {
+   const { state } = useRemote(`/periods/${encodeURIComponent(periodId)}/offerings?limit=100`, OfferingListResponseSchema, true);
+@@ -69,7 +69,7 @@ function MaterialCatalog({ path, search, setSearch, format, setFormat, resetFilt
+   return <>
+     {meta.sourceStatus === "PARTIAL" && <p className="notice notice-warning" role="status">Показаны доступные материалы. Сведения источника могут быть неполными.</p>}
+     <div className="catalog-local-filters"><label>Поиск по названию<span><Search size={17} aria-hidden="true" /><input type="search" value={search} onChange={event => { setSearch(event.target.value); clearPageError(); }} placeholder="Название файла или ресурса" /></span></label><label>Формат<select value={format} onChange={event => { setFormat(event.target.value); clearPageError(); }}><option value="">Все форматы</option><option value="PDF">PDF</option><option value="DOCX">DOCX</option><option value="PPTX">PPTX</option><option value="XLSX">XLSX</option><option value="LINK">Ссылки</option></select></label><button type="button" onClick={reset}>Сбросить</button></div>
+-    <div className="catalog-head"><div><span className="page-hero-eyebrow">БИБЛИОТЕКА МАТЕРИАЛОВ</span><h2>Доступные записи</h2></div><span>{files.length} файлов · {links.length} ссылок</span></div>
++    <div className="catalog-head"><div><span className="page-hero-eyebrow">БИБЛИОТЕКА МАТЕРИАЛОВ</span><h2>Материалы занятий</h2></div><span>{files.length} файлов · {links.length} ссылок</span></div>
+     <div className="catalog-layout"><div className="catalog-primary">
+       {!!files.length && <section className="catalog-group" aria-labelledby="catalog-files"><header><BookOpen size={20} aria-hidden="true" /><h3 id="catalog-files">Учебные файлы</h3><span>{files.length}</span></header><div>{files.map(item => <MaterialRow item={item} key={item.materialId} />)}</div></section>}
+       {!!links.length && <section className="catalog-group" aria-labelledby="catalog-links"><header><Link2 size={20} aria-hidden="true" /><h3 id="catalog-links">Внешние ресурсы</h3><span>{links.length}</span></header><div>{links.map(item => <MaterialRow item={item} key={item.materialId} />)}</div></section>}
+@@ -103,7 +103,8 @@ export function MaterialsScreen() {
+   if (unitId) filter.set("unitId", unitId);
+   const path = `/materials?${filter}`;
+   return <main id="main" className="workspace materials-r9-main">
+-    <PageHero eyebrow="УЧЕБНЫЙ КАБИНЕТ" title="Материалы" description="Учебные файлы и внешние ресурсы, доступные в личном кабинете." image="materials-library.jpg" />
++    <PageHero eyebrow="УЧЕБНЫЙ КАБИНЕТ" title="Материалы" description="Файлы и ссылки, прикреплённые к конкретным занятиям." image="materials-library.jpg" />
++    <p className="notice notice-info">Здесь отображаются только материалы, для которых указано конкретное занятие. Материалы к учебным работам доступны внутри соответствующей работы.</p>
+     <div className="catalog-scope-filters"><label>Учебный период<select value={periodId ?? ""} onChange={event => router.push(event.target.value ? `/materials?periodId=${encodeURIComponent(event.target.value)}` : "/materials")}><option value="">Все доступные периоды</option>{periods.state.kind === "ready" && periods.state.value.data.items.map(period => <option key={period.periodId} value={period.periodId}>{period.label}</option>)}</select></label><label>Дисциплина<select value={offeringId ?? ""} disabled={periods.state.kind !== "ready"} onChange={event => changeDiscipline(event.target.value)}><option value="">Все дисциплины</option>{periods.state.kind === "ready" && periods.state.value.data.items.filter(period => !periodId || period.periodId === periodId).map(period => {
+       const options = disciplineOptions[period.periodId];
+       return <optgroup key={period.periodId} label={period.label}>
+diff --git a/src/app/globals.css b/src/app/globals.css
+index c404eea..bfdc10e 100644
+--- a/src/app/globals.css
++++ b/src/app/globals.css
+@@ -1567,9 +1567,9 @@ body { min-width:0; }
+ .learning-r9-main .work-card-open { justify-self:start; margin-top:3px; }
+ .discipline-stat-copy { display:grid; gap:4px; min-width:0; }
+ .discipline-stat-copy>strong { color:#B30842; font:700 clamp(25px,2vw,32px)/1 var(--puls-serif); }
+-.discipline-stat-copy>span { color:#321824; font:700 16px/1.25 var(--puls-sans); }
+-.discipline-stat-copy>small { color:#705B64; font:500 12px/1.35 var(--puls-sans); }
+-.discipline-stat-attestation .discipline-stat-copy>strong { font:700 16px/1.3 var(--puls-sans); }
++.discipline-stat-copy>span { color:#321824; font:700 16px/1.25 Arial,"Helvetica Neue",system-ui,sans-serif; }
++.discipline-stat-copy>small { color:#705B64; font:500 12px/1.35 Arial,"Helvetica Neue",system-ui,sans-serif; }
++.discipline-stat-attestation .discipline-stat-copy>strong { font:700 16px/1.3 Arial,"Helvetica Neue",system-ui,sans-serif; }
+ .discipline-attention-item>.work-status { flex:none; }
+ .discipline-result-card { min-height:0; }
+ .discipline-result-card .work-card-top { margin-bottom:2px; }
+@@ -1602,3 +1602,43 @@ body { min-width:0; }
+   .learning-work-stage { display:grid; gap:10px; }
+   .learning-work-stage-meta { display:flex; flex-wrap:wrap; align-items:center; justify-items:start; }
+ }
++
++
++/* Чёткая вертикальная структура показателей дисциплины. */
++.discipline-stat-copy { display:flex !important; flex:1; flex-direction:column; align-items:flex-start; justify-content:center; gap:4px; min-width:0; line-height:1.25; }
++.discipline-stat-copy > strong,.discipline-stat-copy > span,.discipline-stat-copy > small { display:block; max-width:100%; white-space:normal; }
++.discipline-stat-copy > .discipline-stat-value { color:#B30842; font:700 clamp(25px,2vw,32px)/1.05 var(--puls-serif); }
++.discipline-stat-copy > .discipline-stat-title { color:#321824; font:700 16px/1.25 Arial,"Helvetica Neue",system-ui,sans-serif; }
++.discipline-stat-copy > .discipline-stat-attestation-value { color:#321824; font:700 16px/1.3 Arial,"Helvetica Neue",system-ui,sans-serif; }
++.discipline-stat-copy > small { color:#705B64; font:500 12px/1.35 Arial,"Helvetica Neue",system-ui,sans-serif; }
++
++/* Журнал посещаемости: одна строка на одно занятие. */
++.discipline-attendance-table { min-width:0; }
++.discipline-attendance-table-head,.discipline-attendance-table-row { display:grid; grid-template-columns:minmax(150px,190px) minmax(220px,1fr) minmax(150px,190px); align-items:center; gap:16px; }
++.discipline-attendance-summary-row { display:grid; grid-template-columns:1fr; padding:9px 14px; border-bottom:1px solid #E8D8DE; color:var(--muted); font-size:12px; }
++.discipline-attendance-summary-row [role="cell"] { grid-column:1 / -1; }
++.discipline-attendance-table-head { padding:11px 14px; border-bottom:1px solid #E8D8DE; color:#705B64; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.035em; }
++.discipline-attendance-table-body { display:grid; gap:0; }
++.discipline-attendance-table-row { min-height:58px; padding:10px 14px; border-bottom:1px solid #F0E4E8; color:#38232D; font-size:14px; }
++.discipline-attendance-table-row:last-child { border-bottom:0; }
++.discipline-attendance-lesson { display:grid; gap:3px; min-width:0; }
++.discipline-attendance-lesson strong { overflow-wrap:anywhere; font-weight:600; }
++.discipline-attendance-lesson small { color:var(--muted); font-size:12px; }
++.attendance-status { display:inline-flex; align-items:center; justify-content:center; min-height:28px; width:max-content; max-width:100%; padding:5px 10px; border-radius:7px; font-size:12px; font-weight:700; line-height:1.2; }
++.attendance-status.is-present { color:#176B43; background:#E8F5ED; }
++.attendance-status.is-absent { color:#9C2637; background:#FBEAEC; }
++.attendance-status.is-other { color:#76551B; background:#F7F1E6; }
++.attendance-status.is-unmarked { color:#66545C; background:#F1ECEF; }
++.attendance-status.is-unavailable { color:#8A4C16; background:#FFF1E2; }
++
++/* Нумерованная постраничная навигация работ. */
++.work-pagination { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:10px; margin-top:24px; }
++.work-pagination-current { color:var(--muted); font-size:13px; }
++.catalog-row-copy strong a { color:inherit; text-decoration:none; }
++.catalog-row-lesson { color:#A70C3D !important; font-weight:600; }
++.catalog-row-lesson a { color:inherit; text-decoration:underline; text-underline-offset:2px; }
++@media(max-width:700px) {
++  .discipline-attendance-table { overflow-x:auto; }
++  .discipline-attendance-table-head,.discipline-attendance-table-row { min-width:640px; }
++  .work-pagination { justify-content:flex-start; }
++}
+diff --git a/src/modules/learning/discipline-content.tsx b/src/modules/learning/discipline-content.tsx
+index 4213569..5502c19 100644
+--- a/src/modules/learning/discipline-content.tsx
++++ b/src/modules/learning/discipline-content.tsx
+@@ -54,23 +54,23 @@ export function DisciplineOverview({ detail, base }: { detail: OfferingDetail; b
+   const workCounts = detail.workCounts;
+   const totalLabel = workCounts?.total == null ? "—" : String(workCounts.total);
+   const reviewLabel = workCounts?.awaitingReview == null ? "—" : String(workCounts.awaitingReview);
+-  const reviewedHint = workCounts?.reviewed == null ? "Статистика проверки пока недоступна" : `Проверено: ${workCounts.reviewed}`;
++  const reviewedHint = workCounts?.reviewed == null ? "Количество проверенных работ неизвестно" : `Проверена ${workCounts.reviewed} ${workCounts.reviewed === 1 ? "работа" : workCounts.reviewed >= 2 && workCounts.reviewed <= 4 ? "работы" : "работ"}`;
+   const reviewHint = workCounts?.awaitingReview == null
+     ? "Не удалось определить точное количество"
+-    : workCounts.awaitingReview === 0 ? "Нет работ, ожидающих проверки" : "Ожидают ответа преподавателя";
++    : workCounts.awaitingReview === 0 ? "Все работы проверены" : "Ждут проверки преподавателя";
+   return <div className="discipline-overview">
+     <div className="discipline-stats">
+       <Link className="discipline-stat" href={`${base}/works`}>
+         <span className="discipline-stat-icon"><FileText /></span>
+-        <span className="discipline-stat-copy"><strong>{totalLabel}</strong><span>Всего заданий</span><small>{reviewedHint}</small></span>
++        <span className="discipline-stat-copy"><strong className="discipline-stat-value">{totalLabel}</strong><span className="discipline-stat-title">Всего заданий</span><small>{reviewedHint}</small></span>
+       </Link>
+       <Link className="discipline-stat" href={`${base}/works?filter=REVIEW`}>
+         <span className="discipline-stat-icon"><Hourglass /></span>
+-        <span className="discipline-stat-copy"><strong>{reviewLabel}</strong><span>На проверке</span><small>{reviewHint}</small></span>
++        <span className="discipline-stat-copy"><strong className="discipline-stat-value">{reviewLabel}</strong><span className="discipline-stat-title">На проверке</span><small>{reviewHint}</small></span>
+       </Link>
+       <Link className="discipline-stat discipline-stat-attestation" href={`${base}?tab=performance#attestation`}>
+         <span className="discipline-stat-icon"><GraduationCap /></span>
+-        <span className="discipline-stat-copy"><span>Аттестация</span><strong>{attestation ? `${attestation.kindLabel}${attestation.planned ? ` · ${academicDate(attestation.planned)}` : ""}` : dataStateText(detail.results.attestationsState.dataState)}</strong></span>
++        <span className="discipline-stat-copy"><span className="discipline-stat-title">Аттестация</span><strong className="discipline-stat-attestation-value">{attestation ? `${attestation.kindLabel}${attestation.planned ? ` · ${academicDate(attestation.planned)}` : ""}` : dataStateText(detail.results.attestationsState.dataState)}</strong></span>
+       </Link>
+     </div>
+     <div className="discipline-main-grid">
+@@ -123,7 +123,18 @@ export function DisciplinePerformance({ detail, apiBase }: { detail: OfferingDet
+       {components.some(c => !c.linkedWorkId) && <div className="discipline-other-results"><h3>Другие показатели</h3>{components.filter(c => !c.linkedWorkId).map(c => <div className="discipline-unlinked-result" key={c.componentId}><span>{c.label}</span><strong>{c.value ? assessmentValue(c.value) : dataStateText(c.state)}</strong></div>)}</div>}
+     </section>
+     <section className="discipline-panel discipline-attendance-panel" id="attendance"><div className="discipline-panel-head"><h2>Посещаемость</h2></div><p className="discipline-hint">Отсутствие отметки не означает пропуск занятия.</p>
+-      <PagedList path={`${apiBase}/sessions?limit=20`} schema={SessionListResponseSchema} empty="Занятия пока не указаны." renderSummary={data => <p className="discipline-attendance-summary" aria-live="polite">{attendanceSummary(data)}</p>} renderItem={item => <article className="discipline-session-card" key={item.schedule.scheduleId}><span className="discipline-session-date">{item.schedule.plannedStart && item.schedule.timeZone ? academicDate({ precision: "DATE_TIME", at: item.schedule.plannedStart, timeZone: item.schedule.timeZone }) : "Дата не указана"}</span><h3>{item.actual?.topic ?? item.schedule.title}</h3><p>{item.schedule.lessonType ?? "Тип занятия не указан"}</p><strong>{item.attendance?.statusLabel ?? (item.attendanceState === "SOURCE_ERROR" ? "Источник отметок недоступен" : "Нет отметки")}</strong></article>} />
++      <div className="discipline-attendance-table" role="table" aria-label="Посещаемость по занятиям">
++        <PagedList path={`${apiBase}/sessions?limit=20`} schema={SessionListResponseSchema} empty="Занятия пока не указаны." listClassName="discipline-attendance-table-body" listRole="rowgroup" renderSummary={data => <><div role="rowgroup"><div className="discipline-attendance-table-head" role="row"><span role="columnheader">Дата</span><span role="columnheader">Занятие</span><span role="columnheader">Статус</span></div></div><div className="discipline-attendance-summary-row" role="row"><span role="cell">{attendanceSummary(data)}</span></div></>} renderItem={item => {
++          const status = item.attendance?.status;
++          const statusClass = status === "PRESENT" ? "is-present" : status === "ABSENT" ? "is-absent" : status === "OTHER_RECORDED" ? "is-other" : item.attendanceState === "SOURCE_ERROR" ? "is-unavailable" : "is-unmarked";
++          const statusLabel = item.attendance?.statusLabel ?? (item.attendanceState === "SOURCE_ERROR" ? "Нет данных" : "Нет отметки");
++          return <div className="discipline-attendance-table-row" role="row" key={item.schedule.scheduleId}>
++            <span role="cell">{item.schedule.plannedStart && item.schedule.timeZone ? academicDate({ precision: "DATE_TIME", at: item.schedule.plannedStart, timeZone: item.schedule.timeZone }) : "Дата не указана"}</span>
++            <span role="cell" className="discipline-attendance-lesson"><strong>{item.schedule.title}</strong><small>{item.actual?.topic && item.actual.topic !== item.schedule.title ? item.actual.topic : item.schedule.lessonType ?? "Занятие"}</small></span>
++            <span role="cell"><span className={`attendance-status ${statusClass}`}>{statusLabel}</span></span>
++          </div>;
++        }} />
++      </div>
+     </section>
+     <section className="discipline-panel" id="attestation"><div className="discipline-panel-head"><h2>Аттестация и официальный итог</h2></div><div className="discipline-attestation-grid"><div><span className="discipline-inline-icon"><GraduationCap /></span><h3>Аттестация</h3>{detail.results.attestations.length ? detail.results.attestations.map(a => <p key={a.attestationId}>{a.kindLabel}{a.planned ? ` · ${academicDate(a.planned)}` : " · Дата не указана"}{a.location ? ` · ${a.location}` : ""}</p>) : <p>{dataStateText(detail.results.attestationsState.dataState)}</p>}</div><div><span className="discipline-inline-icon"><BookOpen /></span><h3>Официальный итог</h3><p>{detail.results.officialResult?.value ? assessmentValue(detail.results.officialResult.value) : dataStateText(detail.results.officialResultState)}</p></div></div></section>
+   </div>;
+diff --git a/src/modules/learning/handlers.ts b/src/modules/learning/handlers.ts
+index 63dcdf6..b10aaee 100644
+--- a/src/modules/learning/handlers.ts
++++ b/src/modules/learning/handlers.ts
+@@ -20,7 +20,8 @@ export function learningHandler(operation: Operation, params: Promise<Record<str
+     if (operation === "materials") {
+       const f = query(request, z.strictObject({ ...pagingQuery, periodId: id.optional(), offeringId: id.optional(), unitId: id.optional() }));
+       const result = await service.allMaterials(f);
+-      return { data: { ...pageSlice(result.items, auth.accountId, ["materials", f.periodId ?? null, f.offeringId ?? null, f.unitId ?? null, f.limit], service.context.revision, f.limit, f.cursor), isComplete: result.meta.completeness ?? null, dataState: result.items.length ? "READY" : result.meta.completeness ? "EMPTY_CONFIRMED" : "SOURCE_ERROR" }, meta: result.meta };
++      const lessonMaterials = result.items.filter(item => (item.relatedScheduleIds?.length ?? 0) > 0);
++      return { data: { ...pageSlice(lessonMaterials, auth.accountId, ["materials", f.periodId ?? null, f.offeringId ?? null, f.unitId ?? null, f.limit], service.context.revision, f.limit, f.cursor), isComplete: result.meta.completeness ?? null, dataState: lessonMaterials.length ? "READY" : result.meta.completeness ? "EMPTY_CONFIRMED" : "SOURCE_ERROR" }, meta: result.meta };
+     }
+     if (operation === "units") {
+       const f = query(request, z.strictObject(pagingQuery)), result = await service.units(path.periodId);
+diff --git a/src/modules/learning/service.ts b/src/modules/learning/service.ts
+index 0c895ec..7aff041 100644
+--- a/src/modules/learning/service.ts
++++ b/src/modules/learning/service.ts
+@@ -3,7 +3,7 @@ import type { AcademicPeriod, AcademicUnit, AcademicWork, AssessmentComponent as
+ import type { LearningPort, SourceLearningScope } from "@/server/integrations/learning-port";
+ import { StudentAcademicContext, audienceAllowed } from "@/modules/student-context/scope";
+ import type { AcademicDate, AssessmentValue, DataState, IndependentUnitSummary, ListStatus, Material, OfferingDetail, PartialError, PublishedWorkResult, ResponseMeta, ResultsView, Stage, TimelineEntry, WorkCounts, WorkDetail, WorkProgress, WorkSummary } from "@/shared/contracts/student-api";
+-import { pageSlice } from "@/shared/server/references";
++import { pageSlice, pageSliceWithNavigation } from "@/shared/server/references";
+ import { notFound } from "@/shared/server/route";
+ import { AppError } from "@/shared/server/errors";
+ import { ScheduleService } from "@/modules/schedule/service";
+@@ -248,7 +248,7 @@ export class LearningService {
+       return (!first && second ? 1 : first && !second ? -1 : first && second ? (issued ? second.localeCompare(first) : first.localeCompare(second)) : 0) || a.workId.localeCompare(b.workId);
+     });
+     const meta = this.meta([slice, progress, ...publishedResults.slices, ...(linkedResults.slice ? [linkedResults.slice] : [])]);
+-    return { data: { ...pageSlice(items, this.context.auth.accountId, selection ? ["works-selection", binding.publicPeriod, binding.publicContext, selection.filter, selection.sort, normalized, limit] : ["works", binding.publicPeriod, binding.publicContext, limit], this.context.revision, limit, cursor), isComplete: meta.completeness ?? null, dataState: items.length ? "READY" as const : meta.completeness ? "EMPTY_CONFIRMED" as const : "UNKNOWN" as const }, meta };
++    return { data: { ...pageSliceWithNavigation(items, this.context.auth.accountId, selection ? ["works-selection", binding.publicPeriod, binding.publicContext, selection.filter, selection.sort, normalized, limit] : ["works", binding.publicPeriod, binding.publicContext, limit], this.context.revision, limit, cursor), isComplete: meta.completeness ?? null, dataState: items.length ? "READY" as const : meta.completeness ? "EMPTY_CONFIRMED" as const : "UNKNOWN" as const }, meta };
+   }
+   private value(raw: SourceValue): AssessmentValue { return { kind: raw.kind, ...(raw.numeric != null ? { numeric: raw.numeric } : {}), ...(raw.text != null ? { text: raw.text } : {}), ...(raw.code != null ? { code: raw.code } : {}), ...(raw.rawValueText != null ? { rawValueText: raw.rawValueText } : {}) }; }
+   async materials(binding: LearningBinding, works?: AcademicWork[]) {
+diff --git a/src/modules/learning/works-page.tsx b/src/modules/learning/works-page.tsx
+index dc8506c..ecae154 100644
+--- a/src/modules/learning/works-page.tsx
++++ b/src/modules/learning/works-page.tsx
+@@ -31,13 +31,16 @@ export async function WorksPage({ periodId, contextId, unit = false, searchParam
+   }
+   const summary = unit ? null : await service.schedule.summary(binding.period, binding.source.offeringId!);
+   const subtitle = unit ? binding.period.label : `${binding.period.label} · ${summary?.subgroup.dataState === "READY" ? summary.subgroup.label ?? "Для всей группы" : "Официальная подгруппа не определена"}`;
+-  const query = new URLSearchParams({ filter: f.filter, sort: f.sort, q: f.q });
+-  if (page.data.nextCursor) query.set("cursor", page.data.nextCursor);
++  const pageHref = (cursor: string | null) => {
++    const query = new URLSearchParams({ filter: f.filter, sort: f.sort, q: f.q });
++    if (cursor) query.set("cursor", cursor);
++    return `${base}/works?${query.toString()}`;
++  };
+   return <main id="main" className="workspace learning-r9-main discipline-page">
+     <PageHero className="discipline-hero" title={binding.title} description={subtitle} image="study-overview.jpg" />
+     {!unit && <OfferingTabs base={base} active="works" />}
+     <section className="discipline-works-section" aria-labelledby="discipline-works-title">
+-      <div className="discipline-panel-head"><h2 id="discipline-works-title">Работы</h2><span aria-live="polite">Показано: {page.data.items.length}{page.data.nextCursor ? " · есть ещё" : ""}</span></div>
++      <div className="discipline-panel-head"><h2 id="discipline-works-title">Работы</h2><span aria-live="polite">{page.data.isComplete === true ? `Всего работ: ${page.data.totalItems}` : `Доступно записей: ${page.data.totalItems}`}</span></div>
+       <form className="work-filters" method="get" action={`${base}/works`}>
+         <label>Название<input name="q" defaultValue={f.q} maxLength={120} placeholder="Поиск по названию" /></label>
+         <label>Показать<select name="filter" defaultValue={f.filter}><option value="ALL">Все работы</option><option value="REVIEW">На проверке</option><option value="DUE">Со сроком</option><option value="RESULT">С результатом</option></select></label>
+@@ -47,7 +50,11 @@ export async function WorksPage({ periodId, contextId, unit = false, searchParam
+       {page.meta.sourceStatus === "PARTIAL" && <p className="notice notice-warning">Сведения неполны. Отсутствие совпадений не подтверждено.</p>}
+       <div className="record-list discipline-work-list">{page.data.items.map(work => <WorkCard key={work.workId} work={work} detailed />)}</div>
+       {!page.data.items.length && <p className="notice">{page.data.isComplete ? "Работ с выбранными условиями нет." : "Нет подтверждённых совпадений; часть сведений недоступна."}</p>}
+-      {page.data.nextCursor && <Link className="button button-secondary" href={`${base}/works?${query}`} prefetch={false}>Следующая порция</Link>}
++      {page.data.totalPages > 1 && <nav className="work-pagination" aria-label="Страницы работ">
++        {page.data.previousCursor && <Link className="button button-secondary" href={pageHref(page.data.previousCursor)} prefetch={false}>← Предыдущая</Link>}
++        <span className="work-pagination-current">Страница {page.data.pageNumber} из {page.data.totalPages}</span>
++        {page.data.nextCursor && <Link className="button button-secondary" href={pageHref(page.data.nextCursor)} prefetch={false}>Следующая →</Link>}
++      </nav>}
+     </section>
+   </main>;
+ }
+diff --git a/src/server/integrations/learning-fixtures.ts b/src/server/integrations/learning-fixtures.ts
+index 0315341..7dbce5e 100644
+--- a/src/server/integrations/learning-fixtures.ts
++++ b/src/server/integrations/learning-fixtures.ts
+@@ -43,10 +43,15 @@ export function fixtureLearning(scope: SourceLearningScope) {
+     planned: on(archived ? "2026-06-10" : "2027-01-15"), locationLabel: "Аудитория 201" }];
+   const courseResults: CourseResult[] = !valid || !offering ? [] : [{ ref: ref("COURSE_RESULT", `${contextId}:official`), courseResultId: `${contextId}:official`, periodId: scope.periodId, offeringId: scope.offeringId!, externalStudentId: scope.externalStudentId,
+     resultState: archived ? "READY" : "PENDING", ...(archived ? { result: { kind: "TEXT" as const, text: math ? "Хорошо" : "Зачтено" }, assessedAt: "2026-06-10T12:00:00+06:00" } : {}), attestationId }];
++  const lessonRefs = scope.offeringId
++    ? fixtureSchedule(scope.externalStudentId, scope.periodId, `${month}-02`, `${month}-08`)
++      .filter(record => record.offeringId === scope.offeringId && !record.subgroupId && record.lessonType === "Лекция")
++      .slice(0, 1).map(record => record.ref)
++    : [];
+   const materials:Material[]=!valid?[]:Object.entries(learningAssets).map(([key,asset])=>({
+     ref:ref("MATERIAL",`${contextId}:material-${key}`),materialId:`${contextId}:material-${key}`,title:asset.filename,kind:"FILE",resourceHandle:`fixture-file:${key}`,mimeType:asset.mime,...context,
+-    // Самостоятельный конспект не создаёт/не имитирует задание ASSIGNED_NOTES.
+-    relatedClassRefs:key==="guide"&&scope.offeringId?fixtureSchedule(scope.externalStudentId,scope.periodId,`${month}-02`,`${month}-08`).filter(r=>r.offeringId===scope.offeringId&&!r.subgroupId).slice(0,1).map(r=>r.ref):[],relatedWorkRefs:key==="notes"?[]:key==="guide"||key==="solution"?works[2]?[works[2].ref]:works[0]?[works[0].ref]:[]:works[0]?[works[0].ref]:[],audiences
++    // Конспект является материалом конкретной лекции, а не самостоятельным заданием.
++    relatedClassRefs:key==="notes"||key==="guide"?lessonRefs:[],relatedWorkRefs:key==="notes"?[]:key==="guide"||key==="solution"?works[2]?[works[2].ref]:works[0]?[works[0].ref]:[]:works[0]?[works[0].ref]:[],audiences
+   }));
+   if(valid){
+     materials.push({ref:ref("MATERIAL",`${contextId}:material-link`),materialId:`${contextId}:material-link`,title:"Пример внешнего ресурса",kind:"LINK",publicHttpsUrl:"https://example.org/",...context,audiences});
+diff --git a/src/shared/contracts/student-api.ts b/src/shared/contracts/student-api.ts
+index 3cdd568..0cd812c 100644
+--- a/src/shared/contracts/student-api.ts
++++ b/src/shared/contracts/student-api.ts
+@@ -212,7 +212,7 @@ export type AcademicUnitPage = z.infer<typeof AcademicUnitPageSchema>;
+ export const SchedulePageSchema = z.strictObject({"items":z.array(ScheduleEntrySchema),"nextCursor":z.union([z.string(),z.null()]),"isComplete":z.union([z.boolean(),z.null()]),"dataState":DataStateSchema});
+ export type SchedulePage = z.infer<typeof SchedulePageSchema>;
+ 
+-export const WorkPageSchema = z.strictObject({"items":z.array(WorkSummarySchema),"nextCursor":z.union([z.string(),z.null()]),"isComplete":z.union([z.boolean(),z.null()]),"dataState":DataStateSchema});
++export const WorkPageSchema = z.strictObject({"items":z.array(WorkSummarySchema),"nextCursor":z.union([z.string(),z.null()]),"previousCursor":z.union([z.string(),z.null()]),"pageNumber":z.number().int().min(1),"totalPages":z.number().int().min(1),"totalItems":z.number().int().min(0),"isComplete":z.union([z.boolean(),z.null()]),"dataState":DataStateSchema});
+ export type WorkPage = z.infer<typeof WorkPageSchema>;
+ 
+ export const SessionPageSchema = z.strictObject({"items":z.array(ScheduleDetailSchema),"nextCursor":z.union([z.string(),z.null()]),"isComplete":z.union([z.boolean(),z.null()]),"dataState":DataStateSchema});
+diff --git a/src/shared/server/references.ts b/src/shared/server/references.ts
+index e9ec22c..68bdd63 100644
+--- a/src/shared/server/references.ts
++++ b/src/shared/server/references.ts
+@@ -11,32 +11,46 @@ export function opaqueRef(accountId: string, source: string, kind: string, ...id
+   return mac("object", JSON.stringify([accountId, source, kind, ...ids]));
+ }
+ const cursorSchema = z.strictObject({ actor: z.string(), filter: z.string(), revision: z.string(), offset: z.number().int().min(0), expires: z.number() });
+-export function pageSlice<T>(items: readonly T[], accountId: string, filters: unknown, revision: string, limit: number, cursor?: string) {
+-  const filter = mac("filters", JSON.stringify(filters));
+-  const actor = mac("actor", accountId);
+-  const version = mac("revision", revision);
+-  let offset = 0;
+-  if (cursor) {
+-    try {
+-      if (cursor.length > 2048) throw new Error();
+-      const [payload, signature, extra] = cursor.split(".");
+-      const expected = mac("cursor", payload);
+-      if (extra !== undefined || !signature || signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new Error();
+-      const decoded = cursorSchema.parse(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")));
+-      if (decoded.actor !== actor || decoded.filter !== filter || decoded.expires <= Date.now()) throw new Error();
+-      if (decoded.revision !== version) throw new AppError(409, "SOURCE_REVISION_CHANGED", "Данные изменились. Обновите список.");
+-      if (decoded.offset > items.length) throw new Error();
+-      offset = decoded.offset;
+-    } catch (error) {
+-      if (error instanceof AppError) throw error;
+-      throw new AppError(422, "VALIDATION_ERROR", "Не удалось продолжить список. Обновите страницу.");
+-    }
++function cursorScope(accountId: string, filters: unknown, revision: string) {
++  return { filter: mac("filters", JSON.stringify(filters)), actor: mac("actor", accountId), version: mac("revision", revision) };
++}
++function cursorOffset(cursor: string | undefined, scope: ReturnType<typeof cursorScope>, itemCount: number) {
++  if (!cursor) return 0;
++  try {
++    if (cursor.length > 2048) throw new Error();
++    const [payload, signature, extra] = cursor.split(".");
++    const expected = mac("cursor", payload);
++    if (extra !== undefined || !signature || signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new Error();
++    const decoded = cursorSchema.parse(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")));
++    if (decoded.actor !== scope.actor || decoded.filter !== scope.filter || decoded.expires <= Date.now()) throw new Error();
++    if (decoded.revision !== scope.version) throw new AppError(409, "SOURCE_REVISION_CHANGED", "Данные изменились. Обновите список.");
++    if (decoded.offset > itemCount) throw new Error();
++    return decoded.offset;
++  } catch (error) {
++    if (error instanceof AppError) throw error;
++    throw new AppError(422, "VALIDATION_ERROR", "Не удалось продолжить список. Обновите страницу.");
+   }
++}
++function makeCursor(offset: number, scope: ReturnType<typeof cursorScope>) {
++  const payload = Buffer.from(JSON.stringify({ actor: scope.actor, filter: scope.filter, revision: scope.version, offset, expires: Date.now() + 15 * 60_000 })).toString("base64url");
++  return `${payload}.${mac("cursor", payload)}`;
++}
++export function pageSlice<T>(items: readonly T[], accountId: string, filters: unknown, revision: string, limit: number, cursor?: string) {
++  const scope = cursorScope(accountId, filters, revision);
++  const offset = cursorOffset(cursor, scope, items.length);
+   const next = offset + limit;
+-  let nextCursor: string | null = null;
+-  if (next < items.length) {
+-    const payload = Buffer.from(JSON.stringify({ actor, filter, revision: version, offset: next, expires: Date.now() + 15 * 60_000 })).toString("base64url");
+-    nextCursor = `${payload}.${mac("cursor", payload)}`;
+-  }
+-  return { items: items.slice(offset, next), nextCursor };
++  return { items: items.slice(offset, next), nextCursor: next < items.length ? makeCursor(next, scope) : null };
++}
++export function pageSliceWithNavigation<T>(items: readonly T[], accountId: string, filters: unknown, revision: string, limit: number, cursor?: string) {
++  const scope = cursorScope(accountId, filters, revision);
++  const offset = cursorOffset(cursor, scope, items.length);
++  const totalPages = Math.max(1, Math.ceil(items.length / limit));
++  const page = pageSlice(items, accountId, filters, revision, limit, cursor);
++  return {
++    ...page,
++    totalItems: items.length,
++    totalPages,
++    pageNumber: Math.floor(offset / limit) + 1,
++    previousCursor: offset > 0 ? makeCursor(Math.max(0, offset - limit), scope) : null,
++  };
+ }
+diff --git a/tests/integration/academic-projections.test.ts b/tests/integration/academic-projections.test.ts
+index 0fdc079..aff7972 100644
+--- a/tests/integration/academic-projections.test.ts
++++ b/tests/integration/academic-projections.test.ts
+@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
+ import { AuthService } from "@/modules/auth/service";
+ import type { AuthContext } from "@/modules/auth/context";
+ import { learningService } from "@/modules/learning/composition";
++import { learningHandler } from "@/modules/learning/handlers";
++import { sessionCookie } from "@/shared/server/http";
+ import { attendanceSummary } from "@/modules/learning/discipline-content";
+ import { getWorkStatus } from "@/modules/learning/work-status";
+ import { CommunityService } from "@/modules/community/service";
+@@ -12,10 +14,11 @@ import { addDays } from "@/shared/lib/dates";
+ import { prepareTestDatabase, testDatabase } from "../support/database";
+ 
+ const admin = testDatabase();
+-let a: AuthContext, b: AuthContext;
++let a: AuthContext, b: AuthContext, tokenA: string;
+ beforeAll(async () => {
+   const fixture = await prepareTestDatabase(admin), service = new AuthService(database(), readConfig());
+   const sessions = await Promise.all([service.login("demo-a", fixture.passwords[0], "127.0.0.1"), service.login("demo-b", fixture.passwords[1], "127.0.0.1")]);
++  tokenA = sessions[0].token;
+   [a, b] = await Promise.all(sessions.map(session => service.requireSession(session.token, randomUUID())));
+ });
+ afterAll(async () => { await admin.$disconnect(); await database().$disconnect(); });
+@@ -219,6 +222,70 @@ describe("официальные учебные проекции и частич
+     expect(review.data.items.some(item => item.workId === lab3.workId)).toBe(false);
+   });
+ 
++
++
++  it("API списка результатов принимает фильтр RESULT и возвращает опубликованную работу", async () => {
++    const { binding, periodId } = await subject(a, "Математический анализ");
++    const request = new Request(`https://puls.test/api/v1/periods/${periodId}/offerings/${binding.publicContext}/works?limit=20&filter=RESULT`, {
++      headers: {
++        cookie: `${sessionCookie}=${tokenA}`,
++        "x-puls-proxy-key": readConfig().TRUSTED_PROXY_KEY,
++        "x-forwarded-proto": "https",
++        "x-puls-client-ip": "127.0.0.1",
++      },
++    });
++    const response = await learningHandler("works", Promise.resolve({ periodId, offeringId: binding.publicContext }))(request);
++    expect(response.status).toBe(200);
++    const body = await response.json();
++    expect(body.data.items).toHaveLength(1);
++    expect(body.data.items[0].title).toBe("Лабораторная работа № 3");
++  });
++
++  it("каталог материалов показывает только файлы, привязанные к конкретному занятию", async () => {
++    const { binding, periodId } = await subject(a, "Математический анализ");
++    const query = new URLSearchParams({ periodId, offeringId: binding.publicContext, limit: "20" });
++    const request = new Request(`https://puls.test/api/v1/materials?${query}`, {
++      headers: {
++        cookie: `${sessionCookie}=${tokenA}`,
++        "x-puls-proxy-key": readConfig().TRUSTED_PROXY_KEY,
++        "x-forwarded-proto": "https",
++        "x-puls-client-ip": "127.0.0.1",
++      },
++    });
++    const response = await learningHandler("materials")(request);
++    expect(response.status).toBe(200);
++    const body = await response.json();
++    expect(body.data.items.length).toBeGreaterThan(0);
++    expect(body.data.items.every((item: { relatedScheduleIds?: string[] }) => (item.relatedScheduleIds?.length ?? 0) > 0)).toBe(true);
++    expect(body.data.items.some((item: { title: string }) => item.title === "Конспект.pdf")).toBe(true);
++  });
++
++  it("работы открываются постранично с номерами страниц и возвратом назад", async () => {
++    const { service, binding } = await subject(a, "Математический анализ");
++    const selection = { filter: "ALL" as const, sort: "DUE" as const, query: "" };
++    const first = await service.listWorks(binding, 20, undefined, selection);
++    expect(first.data).toMatchObject({ totalItems: 26, totalPages: 2, pageNumber: 1, previousCursor: null });
++    expect(first.data.nextCursor).toBeTruthy();
++
++    const second = await service.listWorks(binding, 20, first.data.nextCursor ?? undefined, selection);
++    expect(second.data).toMatchObject({ totalItems: 26, totalPages: 2, pageNumber: 2, nextCursor: null });
++    expect(second.data.previousCursor).toBeTruthy();
++    expect(second.data.items).toHaveLength(6);
++    const backToFirst = await service.listWorks(binding, 20, second.data.previousCursor ?? undefined, selection);
++    expect(backToFirst.data.pageNumber).toBe(1);
++    expect(backToFirst.data.items.map(item => item.workId)).toEqual(first.data.items.map(item => item.workId));
++  });
++
++  it("прикрепляет конспект к конкретной лекции, а не оставляет его без учебного контекста", async () => {
++    const { service, binding, periodId } = await subject(a, "Математический анализ");
++    const materials = await service.allMaterials({ periodId, offeringId: binding.publicContext });
++    const note = materials.items.find(item => item.title === "Конспект.pdf");
++    expect(note?.relatedScheduleIds).toHaveLength(1);
++    const lesson = await service.schedule.detail(note!.relatedScheduleIds![0]);
++    expect(lesson.data.schedule.offeringId).toBe(binding.publicContext);
++    expect(lesson.data.schedule.lessonType).toBe("Лекция");
++  });
++
+   it("считает все работы дисциплины, а не только карточки первой страницы", async () => {
+     const { service, binding } = await subject(a, "Математический анализ");
+     const detail = await service.offeringDetail(binding);
+diff --git "a/\320\264\320\276\320\272\321\203\320\274\320\265\320\275\321\202\320\260\321\206\320\270\321\217/API/\320\232\320\276\320\275\321\202\321\200\320\260\320\272\321\202_\321\201\321\202\321\203\320\264\320\265\320\275\321\207\320\265\321\201\320\272\320\276\320\263\320\276_API.yaml" "b/\320\264\320\276\320\272\321\203\320\274\320\265\320\275\321\202\320\260\321\206\320\270\321\217/API/\320\232\320\276\320\275\321\202\321\200\320\260\320\272\321\202_\321\201\321\202\321\203\320\264\320\265\320\275\321\207\320\265\321\201\320\272\320\276\320\263\320\276_API.yaml"
+index b8157fd..ab61b7f 100644
+--- "a/\320\264\320\276\320\272\321\203\320\274\320\265\320\275\321\202\320\260\321\206\320\270\321\217/API/\320\232\320\276\320\275\321\202\321\200\320\260\320\272\321\202_\321\201\321\202\321\203\320\264\320\265\320\275\321\207\320\265\321\201\320\272\320\276\320\263\320\276_API.yaml"
++++ "b/\320\264\320\276\320\272\321\203\320\274\320\265\320\275\321\202\320\260\321\206\320\270\321\217/API/\320\232\320\276\320\275\321\202\321\200\320\260\320\272\321\202_\321\201\321\202\321\203\320\264\320\265\320\275\321\207\320\265\321\201\320\272\320\276\320\263\320\276_API.yaml"
+@@ -5098,6 +5098,19 @@ components:
+           type:
+             - string
+             - 'null'
++        previousCursor:
++          type:
++            - string
++            - 'null'
++        pageNumber:
++          type: integer
++          minimum: 1
++        totalPages:
++          type: integer
++          minimum: 1
++        totalItems:
++          type: integer
++          minimum: 0
+         isComplete:
+           type:
+             - boolean
+@@ -5108,6 +5121,10 @@ components:
+       required:
+         - items
+         - nextCursor
++        - previousCursor
++        - pageNumber
++        - totalPages
++        - totalItems
+         - isComplete
+         - dataState
+     SessionPage:

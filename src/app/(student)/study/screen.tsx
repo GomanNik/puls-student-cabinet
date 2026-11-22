@@ -36,16 +36,16 @@ function OfferingList({ periodId, periods }: { periodId: string; periods: Academ
   const [search, setSearch] = useState(""), [debouncedSearch, setDebouncedSearch] = useState("");
   useEffect(() => { const timer = window.setTimeout(() => setDebouncedSearch(search.trim().normalize("NFKC")), 250); return () => window.clearTimeout(timer); }, [search]);
   const path = `/periods/${encodeURIComponent(periodId)}/offerings?limit=20${debouncedSearch ? `&search=${encodeURIComponent(debouncedSearch)}` : ""}`;
-  return <div className="study-r9-layout"><div className="study-r9-primary"><section className="study-r9-section" aria-label="Дисциплины выбранного семестра"><div className="study-r9-section-head"><label className="study-r9-period-select" style={{ marginLeft: "auto" }}><span>Учебный период</span><select value={periodId} onChange={event => router.push(`/study?period=${encodeURIComponent(event.target.value)}`)}>{periods.map(period => <option key={period.periodId} value={period.periodId}>{period.label}{period.isCurrent ? " · текущий" : ""}</option>)}</select></label></div>
+  return <div className="study-r9-layout"><div className="study-r9-primary"><section className="study-r9-section" aria-label="Дисциплины выбранного семестра"><div className="study-r9-section-head"><label className="study-r9-period-select" style={{ marginLeft: "auto" }}><span>Учебный период</span><select value={periodId} onChange={event => router.push(`/study?tab=disciplines&period=${encodeURIComponent(event.target.value)}`)}>{periods.map(period => <option key={period.periodId} value={period.periodId}>{period.label}{period.isCurrent ? " · текущий" : ""}</option>)}</select></label></div>
     <label className="study-r9-search">Найти дисциплину<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Введите часть названия" maxLength={160} /></label>
     <div className="study-discipline-results"><PagedList key={path} path={path} schema={OfferingListResponseSchema} renderItem={offering => <DisciplineCard key={offering.offeringId} offering={offering} periodId={periodId} />} empty={debouncedSearch ? "По запросу дисциплины не найдены." : "В этом семестре нет подтверждённых дисциплин."} /></div>
   </section><section className="study-r9-section study-r9-units" aria-labelledby="study-units-title"><div className="study-r9-section-head"><h2 id="study-units-title"><BookOpen size={22} aria-hidden="true" />Самостоятельные учебные единицы</h2></div><PagedList key={`units-${periodId}`} path={`/periods/${periodId}/academic-units?limit=20`} schema={UnitListResponseSchema} renderItem={unit => <Link className="study-r9-unit-card" href={`/study/${periodId}/units/${unit.unitId}`} prefetch={false} key={unit.unitId}><BookOpen size={21} aria-hidden="true" /><span><strong>{unit.title}</strong><small>{unit.unitTypeLabel ?? "Тип учебной единицы не указан"}</small></span><ArrowRight size={19} aria-hidden="true" /></Link>} /></section></div></div>;
 }
 export function StudyScreen() {
-  const { state, reload } = useRemote("/periods", PeriodListResponseSchema), params = useSearchParams();
+  const { state, reload } = useRemote("/periods", PeriodListResponseSchema), params = useSearchParams(), router = useRouter();
   if (state.kind !== "ready") return <main id="main" className="workspace"><h1>Учёба</h1><RemoteState state={state} retry={reload} /></main>;
   const periods = state.value.data.items, requested = params.get("period");
-  const selected = requested ? periods.find(p => p.periodId === requested) : periods.find(p => p.isCurrent) ?? periods[0];
+  const selected = requested ? periods.find(p => p.periodId === requested) : periods.find(p => p.isCurrent);
   const section = params.get("tab") === "grades" ? "grades" : "disciplines";
   return <main id="main" className="workspace study-r9-main">
     <PageHero title="Учёба" description="Дисциплины выбранного периода, учебные работы и сроки аттестации — в одном разделе." image="study-overview.jpg" />
@@ -56,5 +56,5 @@ export function StudyScreen() {
     {selected ? section === "grades"
       ? <GradesScreen key={selected.periodId} periodId={selected.periodId} periods={periods} />
       : <OfferingList key={selected.periodId} periodId={selected.periodId} periods={periods} />
-      : <p className="notice">{requested ? "Этот учебный период недоступен." : "Подтверждённых учебных периодов пока нет."}</p>}</main>;
+      : <div className="study-r9-section"><p className="notice">{requested ? "Этот учебный период недоступен." : periods.length ? "Текущий учебный период не подтверждён. Выберите доступный период вручную." : "Подтверждённых учебных периодов пока нет."}</p>{periods.length > 0 && <label className="study-r9-period-select"><span>Учебный период</span><select value="" onChange={event => { if (event.target.value) router.push(`/study?tab=${section}&period=${encodeURIComponent(event.target.value)}`); }}><option value="">Выберите период</option>{periods.map(period => <option key={period.periodId} value={period.periodId}>{period.label}</option>)}</select></label>}</div>}</main>;
 }

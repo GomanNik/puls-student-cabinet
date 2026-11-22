@@ -6,6 +6,7 @@ import { seedStudents } from "../../prisma/seed-service";
 
 export function testDatabase() {
   config({ path: ".env.test.local", override: true, quiet: true });
+  process.env.PULS_AI_PROVIDER = "DEMO_MOCK";
   const url = process.env.MIGRATION_DATABASE_URL;
   if (!url || new URL(url).pathname !== "/puls_test") throw new Error("Проверки разрешены только в отдельной БД puls_test.");
   return new PrismaClient({ adapter: new PrismaPg({ connectionString: url, options: "-c timezone=UTC", max: 4 }) });

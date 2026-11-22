@@ -51,6 +51,64 @@ describe("помощник в подтверждённом контексте с
     expect(second.text).toContain("Других преподавателей");
     expect(second.targets).toEqual([]);
   });
+  it("распознаёт продолжение про других преподавателей без начального «А»", async () => {
+    const first = await askAssistant(a, { message: "Какие преподаватели ведут занятия у моей группы?" });
+    const second = await askAssistant(a, { message: "Какие ещё есть преподаватели?", history: [
+      { role: "user", content: "Какие преподаватели ведут занятия у моей группы?" },
+      { role: "assistant", content: first.text },
+    ] });
+    expect(second.text).toContain("Других преподавателей");
+    expect(second.targets).toEqual([]);
+  });
+
+  it("по вопросу «кто из них ведёт историю» повторно проверяет дисциплину", async () => {
+    const first = await askAssistant(a, { message: "Какие преподаватели ведут занятия у моей группы?" });
+    const second = await askAssistant(a, { message: "Кто из них ведёт историю России?", history: [
+      { role: "user", content: "Какие преподаватели ведут занятия у моей группы?" },
+      { role: "assistant", content: first.text },
+    ] });
+    expect(second.text).toContain("История России");
+    expect(second.text).toContain("Светлов Павел Андреевич");
+    expect(second.targets.length).toBeGreaterThan(0);
+  });
+
+  it("разрешает местоимение по единственному преподавателю из предыдущего ответа", async () => {
+    const answer = await askAssistant(a, { message: "А у неё какие ещё предметы?", history: [
+      { role: "user", content: "Кто ведёт практические занятия?" },
+      { role: "assistant", content: "Практические занятия ведёт Зорина Татьяна Викторовна." },
+    ] });
+    expect(answer.text).toContain("Зорина Татьяна Викторовна");
+    expect(answer.text).toContain("Математический анализ");
+    expect(answer.text).toContain("История России");
+  });
+
+  it("просит уточнение, если местоимение может относиться к нескольким преподавателям", async () => {
+    const answer = await askAssistant(a, { message: "А у него какие предметы?", history: [
+      { role: "user", content: "Какие преподаватели ведут занятия у моей группы?" },
+      { role: "assistant", content: "Светлов Павел Андреевич и Зорина Татьяна Викторовна." },
+    ] });
+    expect(answer.text).toContain("Уточните");
+    expect(answer.targets).toEqual([]);
+  });
+
+  it("уточняет критерий, если студент спрашивает только «кто из них»", async () => {
+    const answer = await askAssistant(a, { message: "Кто из них?", history: [
+      { role: "user", content: "Какие преподаватели ведут занятия у моей группы?" },
+      { role: "assistant", content: "Светлов Павел Андреевич и Зорина Татьяна Викторовна." },
+    ] });
+    expect(answer.text).toContain("Уточните");
+    expect(answer.targets).toEqual([]);
+  });
+
+  it("отвечает на вопросы о возможностях ПУЛЬС из локальной базы знаний", async () => {
+    const overview = await askAssistant(a, { message: "Что такое ПУЛЬС?" });
+    const navigation = await askAssistant(a, { message: "Где посмотреть расписание?" });
+    expect(overview.providerMode).toBe("DEMO_MOCK");
+    expect(overview.notice).toContain("База знаний ПУЛЬС");
+    expect(overview.text).toContain("конкурсный прототип");
+    expect(navigation.text).toContain("Откройте «Расписание»");
+    expect(navigation.notice).toContain("База знаний ПУЛЬС");
+  });
 
   it("не скрывает подтверждённый нулевой балл за общим отсутствием итогов", async () => {
     const answer = await askAssistant(a, { message: "Какие у меня результаты за семестр?" });

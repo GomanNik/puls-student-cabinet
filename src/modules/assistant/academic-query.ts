@@ -8,16 +8,52 @@ type Fact = AssistantFact & { target?: C.Target };
 type AcademicResult = { answer: C.AssistantAnswer; topic: AssistantTopic; sources: { name: string; state: "FOUND" | "EMPTY" | "PARTIAL" | "UNAVAILABLE"; count: number }[]; contextSent: boolean; modelUsed?: string; fallback?: string };
 const normalize = (s: string) => s.toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
 
+function isTeacherFollowUp(question: string, previousQuestion: string, previousAnswer: string) {
+  const q = normalize(question);
+  const continuation = /^(?:а\s+)?(?:какие|кто)\s+(?:еще|друг)|^(?:а\s+)?кто\s+из\s+них|^(?:а\s+)?у\s+(?:него|нее|них)(?=$|\s|[?!.])|^(?:а\s+)?(?:что|какие)\s+у\s+(?:него|нее|них)(?=$|\s|[?!.])|^(?:а\s+)?(?:какие|что)\s+(?:предметы|дисциплины)\s+у\s+(?:него|нее|них)(?=$|\s|[?!.])|^(?:а\s+)?(?:что|какие)\s+(?:он|она)(?=$|\s|[?!.])|^(?:а\s+)?(?:он|она)\s+(?:какие|что)(?=$|\s|[?!.])|^(?:а\s+)?(?:какие|что)\s+предметы\s+(?:он|она)(?=$|\s|[?!.])/u.test(q);
+  return continuation && (/преподав|учител|кто\s+(?:ведет|проводит)/u.test(normalize(previousQuestion)) || /преподавател|учител|ведет/u.test(normalize(previousAnswer)));
+}
+
+function teacherNamesIn(value: string) {
+  return [...new Set(value.match(/[А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё-]+/gu) ?? [])];
+}
+
+function sameTeacherName(left: string, right: string) {
+  const a = normalize(left).match(/[а-яё]{4,}/gu) ?? [];
+  const b = normalize(right).match(/[а-яё]{4,}/gu) ?? [];
+  return a.length === 3 && b.length === 3 && a.every((part, index) => { const length = index === 1 ? 3 : 4; return part.slice(0, length) === b[index].slice(0, length); });
+}
+
+function mentionsTeacherName(question: string, name: string) {
+  const words = normalize(name).split(/\s+/u);
+  const q = normalize(question);
+  return words.length === 3 && words.every((word, index) => q.includes(word.slice(0, index === 1 ? 3 : 4)));
+}
+
+export function inferAcademicTopic(question: string, history: AssistantTurn[]): AssistantTopic | undefined {
+  const q = normalize(question);
+  const previousQuestion = history.at(-2)?.content ?? "";
+  const previousAnswer = history.at(-1)?.content ?? "";
+  const previousTeacherNames = teacherNamesIn(previousAnswer);
+  const namedTeacherAtEnd = /(?:^|\s)[а-яё-]{4,}\s+[а-яё-]{3,}\s+[а-яё-]{5,}[?!.]*$/u.test(q) && /преподав|учител|ведет|предмет|дисциплин|у\s+[а-яё-]{4,}\s+[а-яё-]{3,}\s+[а-яё-]{5,}/u.test(q);
+  if (/преподав|учител|кто\s+(?:ведет|проводит)|кто\s+из\s+них/u.test(q) || namedTeacherAtEnd || previousTeacherNames.some(name => mentionsTeacherName(q, name)) || isTeacherFollowUp(question, previousQuestion, previousAnswer)) return "TEACHERS";
+  if (/расписан|заняти|пара|лекци|завтра|сегодня|недел|перенос|отмен/u.test(q)) return "SCHEDULE";
+  if (/работ|задан|срок|провер|сдать|выполн/u.test(q)) return "WORKS";
+  if (/оцен|балл|результат|аттест|экзамен|зачет/u.test(q)) return "RESULTS";
+  if (/предмет|дисциплин|изуча|семестр/u.test(q)) return "DISCIPLINES";
+  return undefined;
+}
+
 function demoPlan(question: string, history: AssistantTurn[], disciplines: string[]): AssistantPlan {
   const q = normalize(question), previous = normalize(history.at(-2)?.content ?? "");
-  const continuation = /^(а\s|еще|кто еще|что дальше|расскажи подробнее|по другому|а завтра)/u.test(q);
+  const continuation = /^(?:а\s+)?(?:еще|кто еще|какие еще|кто из них|у него|у нее|у них|что дальше|расскажи подробнее|по другому|завтра)/u.test(q);
   const subject = disciplines.find(title => normalize(title).split(" ").some(word => word.length > 4 && q.includes(word.slice(0, 5))))
     ?? (continuation ? disciplines.find(title => previous.includes(normalize(title))) : undefined);
-  const topic: AssistantTopic = /преподав|кто ведет|кто проводит/u.test(q) || continuation && /преподав|кто ведет/u.test(previous) ? "TEACHERS"
-    : /расписан|заняти|пара|лекци|завтра|сегодня|недел|перенос|отмен/u.test(q) ? "SCHEDULE"
-    : /работ|задан|срок|провер|сдать|выполн/u.test(q) ? "WORKS"
-    : /оцен|балл|результат|аттест|экзамен|зачет/u.test(q) ? "RESULTS"
-    : /предмет|дисциплин|изуча|семестр/u.test(q) ? "DISCIPLINES" : "OTHER_ACADEMIC";
+  const topic: AssistantTopic = inferAcademicTopic(question, history)
+    ?? (/расписан|заняти|пара|лекци|завтра|сегодня|недел|перенос|отмен/u.test(q) ? "SCHEDULE"
+      : /работ|задан|срок|провер|сдать|выполн/u.test(q) ? "WORKS"
+      : /оцен|балл|результат|аттест|экзамен|зачет/u.test(q) ? "RESULTS"
+      : /предмет|дисциплин|изуча|семестр/u.test(q) ? "DISCIPLINES" : "OTHER_ACADEMIC");
   return { topic, discipline: subject ?? null, teacher: null, followUp: continuation };
 }
 
@@ -38,21 +74,40 @@ export async function answerAcademicQuery(message: string, history: AssistantTur
   let planned: AssistantPlan;
   try { planned = provider ? await provider.plan(message, history, titles) : demoPlan(message, history, titles); }
   catch (error) {
-    if (!(error instanceof GigaChatError) || error.kind !== "INVALID_RESPONSE") throw error;
+    if (!(error instanceof GigaChatError)) throw error;
     planned = demoPlan(message, history, titles);
-    planFallback = "GigaChat вернул некорректный план запроса; использована локальная классификация.";
+    planFallback = "Планировщик GigaChat недоступен или вернул некорректный ответ; использована локальная классификация.";
   }
   const q = normalize(message);
+  const previousQuestion = history.at(-2)?.content ?? "";
+  const previousAnswer = history.at(-1)?.content ?? "";
   const explicitDiscipline = titles.find(title => normalize(title).split(" ").some(word => word.length > 4 && q.includes(word.slice(0, 5))));
-  const forcedTopic: AssistantTopic | undefined = /кто\s+ведет|какие\s+преподаватели|кто\s+еще\s+преподает|предмет.*ведет/u.test(q) ? "TEACHERS"
-    : /следующ.*(?:пар|заняти|лекци)|завтра|расписан|что\s+будет\s+дальше/u.test(q) ? "SCHEDULE"
-    : /что.*нужно\s+сделать|задан|работ|проверено|выполн|срок/u.test(q) ? "WORKS" : undefined;
-  const plan: AssistantPlan = { ...planned, topic: /по\s+другому\s+предмету/u.test(q) && !explicitDiscipline ? "CLARIFY" : forcedTopic ?? planned.topic, discipline: explicitDiscipline ?? (titles.includes(planned.discipline ?? "") ? planned.discipline : null), followUp: planned.followUp || /^(?:а\s|кто\s+еще|какие\s+еще)/u.test(q) };
+  const inferredTopic = inferAcademicTopic(message, history);
+  const singularTeacherPronoun = /^(?:а\s+)?(?:у\s+(?:него|нее|них)(?=$|\s|[?!.])|(?:что|какие)\s+у\s+(?:него|нее|них)(?=$|\s|[?!.])|(?:какие|что)\s+(?:предметы|дисциплины)\s+у\s+(?:него|нее|них)(?=$|\s|[?!.])|(?:что|какие)\s+(?:он|она)(?=$|\s|[?!.])|(?:он|она)\s+(?:какие|что)(?=$|\s|[?!.])|(?:какие|что)\s+предметы\s+(?:он|она)(?=$|\s|[?!.]))/u.test(q);
+  const previousTeacherNames = teacherNamesIn(previousAnswer);
+  const ambiguousTeacherReference = singularTeacherPronoun && previousTeacherNames.length !== 1;
+  const ambiguousWhichTeacher = /^кто\s+из\s+них(?:\s+(?:ведет|преподает))?[?!.]*$/u.test(q) && !explicitDiscipline;
+  const teacherFollowUp = isTeacherFollowUp(message, previousQuestion, previousAnswer);
+  const asksMoreTeachers = inferredTopic === "TEACHERS" && !singularTeacherPronoun && !explicitDiscipline && /еще|друг/u.test(q) && (/преподав|учител|^кто\s+еще|^какие\s+еще\s+преподав/u.test(q) || teacherFollowUp && !/предмет|дисциплин/u.test(q));
+  const teacherFromPrevious = singularTeacherPronoun && previousTeacherNames.length === 1 ? previousTeacherNames[0] : null;
+  const teacherFromQuestion = teacherNamesIn(message)[0] ?? null;
+  const explicitTeacherExclusion = asksMoreTeachers && /кроме|помимо|не\s+считая/u.test(q) ? teacherFromQuestion : null;
+  const requestedTeacher = teacherFromPrevious ?? (!asksMoreTeachers ? teacherFromQuestion ?? (planned.teacher && (q.includes(normalize(planned.teacher)) || normalize(previousAnswer).includes(normalize(planned.teacher))) ? planned.teacher : null) : null);
+  const forcedTopic: AssistantTopic | undefined = inferredTopic
+    ?? (/следующ.*(?:пар|заняти|лекци)|завтра|расписан|что\s+будет\s+дальше/u.test(q) ? "SCHEDULE"
+      : /что.*нужно\s+сделать|задан|работ|проверено|выполн|срок/u.test(q) ? "WORKS" : undefined);
+  const plan: AssistantPlan = {
+    ...planned,
+    topic: /по\s+другому\s+предмету/u.test(q) && !explicitDiscipline || ambiguousTeacherReference || ambiguousWhichTeacher ? "CLARIFY" : forcedTopic ?? planned.topic,
+    discipline: explicitDiscipline ?? (singularTeacherPronoun || asksMoreTeachers ? null : titles.includes(planned.discipline ?? "") ? planned.discipline : null),
+    teacher: requestedTeacher,
+    followUp: planned.followUp || teacherFollowUp || asksMoreTeachers || /^(?:а\s|кто\s+еще|какие\s+еще)/u.test(q),
+  };
   if (/этой\s+дисциплине/u.test(q) && !plan.discipline) plan.topic = "CLARIFY";
-  if (plan.topic === "GENERAL" && provider) {
-    const reply = await provider.answer(message, [], history);
-    return { answer: { text: reply.text, providerMode: "GIGACHAT", completeness: "UNKNOWN", targets: [] }, topic: plan.topic, sources: [], contextSent: false, modelUsed: process.env.GIGACHAT_MODEL ?? "GigaChat-2" };
-  }
+  // Академический запрос никогда не отправляется модели без фактов только потому,
+  // что внешний планировщик назвал его GENERAL. В сомнительном случае он уходит
+  // в обычную обработку сервиса, а не получает неподтверждённый ответ.
+  if (plan.topic === "GENERAL") return null;
   if (!["TEACHERS", "DISCIPLINES", "SCHEDULE", "WORKS", "RESULTS", "CLARIFY"].includes(plan.topic)) return null;
   if (plan.topic === "CLARIFY") return { answer: { text: "Уточните, пожалуйста, дисциплину или преподавателя, о котором хотите узнать.", providerMode: "DEMO_MOCK", completeness: "UNKNOWN", targets: [] }, topic: plan.topic, sources: [], contextSent: false };
   if (!plan.discipline && /(?:^|\s)по\s+(?!предмет|дисциплин|расписан|работ|заняти)([а-яё]{5,})/u.test(q) && !/по\s+(?:другому|моему|своему)/u.test(q)) return { answer: { text: "Не удалось сопоставить указанное название с вашими дисциплинами. Уточните предмет.", providerMode: "DEMO_MOCK", completeness: learning.context.partial ? "UNKNOWN" : "COMPLETE", targets: [] }, topic: plan.topic, sources: [{ name: "Дисциплины текущего периода", state: learning.context.partial ? "PARTIAL" : "EMPTY", count: 0 }], contextSent: false };
@@ -121,11 +176,15 @@ export async function answerAcademicQuery(message: string, history: AssistantTur
     }
   } catch { source("Учебный источник", 0, false); }
   const teacherNames = [...new Set(facts.map(fact => fact.text.match(/(?:—|ведёт)\s+([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)/u)?.[1]).filter((name): name is string => !!name))];
-  const teacher = teacherNames.find(name => normalize(message).includes(normalize(name)) || /^(?:а\s+он|а\s+она|что\s+он|что\s+она)/u.test(q) && plan.teacher && normalize(name) === normalize(plan.teacher));
-  const filtered = teacher ? facts.filter(fact => fact.text.includes(teacher)) : facts;
-  const priorAnswer = plan.followUp ? normalize(history.at(-1)?.content ?? "") : "";
-  const relevant = plan.topic === "TEACHERS" && /еще|друг/u.test(q) && priorAnswer
-    ? filtered.filter(fact => !teacherNames.some(name => fact.text.includes(name) && priorAnswer.includes(normalize(name)))) : filtered;
+  const excludesNamedTeacher = asksMoreTeachers && /кроме|помимо|не\s+считая/u.test(q);
+  const teacher = requestedTeacher ? teacherNames.find(name => sameTeacherName(name, requestedTeacher)) ?? requestedTeacher : excludesNamedTeacher ? undefined : teacherNames.find(name => mentionsTeacherName(q, name));
+  const filtered = teacher ? facts.filter(fact => normalize(fact.text).includes(normalize(teacher))) : facts;
+  const priorAnswer = plan.followUp ? normalize(previousAnswer) : "";
+  const previouslyListed = teacherNames.filter(name => priorAnswer.includes(normalize(name)));
+  const queryTeacherExclusion = explicitTeacherExclusion ?? (excludesNamedTeacher ? teacherNames.find(name => mentionsTeacherName(q, name)) : undefined);
+  const excludedTeachers = [...previouslyListed, ...(queryTeacherExclusion ? [queryTeacherExclusion] : [])];
+  const relevant = asksMoreTeachers && excludedTeachers.length
+    ? filtered.filter(fact => !teacherNames.some(name => excludedTeachers.some(excluded => sameTeacherName(name, excluded)) && normalize(fact.text).includes(normalize(name)))) : filtered;
   const bounded: Fact[] = []; let bytes = 0;
   for (const fact of relevant) { const size = Buffer.byteLength(fact.text); if (bytes + size > 11000) { complete = false; break; } bounded.push(fact); bytes += size; }
   if ((plan.topic === "WORKS" || plan.topic === "SCHEDULE") && relevant.length > 10) complete = false;
@@ -133,8 +192,8 @@ export async function answerAcademicQuery(message: string, history: AssistantTur
   let generated: { text: string; factIds: string[] } | undefined;
   if (provider) try { generated = await provider.answer(message, bounded.map(({ id, text }) => ({ id, text })), history); }
   catch (error) {
-    if (!(error instanceof GigaChatError) || error.kind !== "INVALID_RESPONSE") throw error;
-    planFallback = "GigaChat вернул некорректный ответ; показаны исходные записи.";
+    if (!(error instanceof GigaChatError)) throw error;
+    planFallback = "GigaChat недоступен или вернул некорректный ответ; показаны исходные записи из учебного источника.";
   }
   const knownResult = plan.topic === "RESULTS" && bounded.some(fact => /:\s*(?:0\s*балл|\d+|зачтено|хорошо|отлично)/iu.test(fact.text));
   const inaccurateAbsence = knownResult && generated && /(?:результат|оценк|балл)[^.!?]{0,80}(?:не\s+указан|нет|отсутств)/iu.test(generated.text);
@@ -157,5 +216,5 @@ export async function answerAcademicQuery(message: string, history: AssistantTur
     return true;
   }) : selectedFacts;
   const text = generated?.factIds.length ? generated.text : `${unsafeWorkClaim ? "Источник не подтверждает, какие работы осталось выполнить. Доступные записи:\n" : ""}${displayedFacts.map(fact => `• ${fact.text}`).join("\n")}`;
-  return { answer: { text, providerMode: generated?.factIds.length ? "GIGACHAT" : "DEMO_MOCK", completeness: complete ? "COMPLETE" : "PARTIAL", targets: [...new Map(selectedFacts.filter(fact => fact.target).map(fact => [JSON.stringify(fact.target), fact.target!])).values()].slice(0, 10), ...(!complete ? { notice: "Часть запрошенных учебных сведений недоступна или ограничена выборкой." } : {}) }, topic: plan.topic, sources, contextSent: !!provider, modelUsed: provider ? process.env.GIGACHAT_MODEL ?? "GigaChat-2" : undefined, fallback: planFallback ?? (provider && !generated?.factIds.length ? unsafeWorkClaim ? "Статусы не позволяют определить невыполненные работы; показаны исходные записи." : inaccurateAbsence ? "Модель неверно обобщила известный результат; показаны исходные записи." : inventedTeacher ? "Модель назвала неподтверждённого преподавателя; показаны исходные записи." : missingTeacher ? "Модель не перечислила всех преподавателей из проверенных источников; показаны исходные записи." : inaccurateTeacherAbsence ? "Модель ошибочно сообщила об отсутствии известных преподавателей; показаны исходные записи." : "Модель не указала проверяемые источники; показаны исходные записи." : undefined) };
+  return { answer: { text, providerMode: generated?.factIds.length ? "GIGACHAT" : "DEMO_MOCK", completeness: complete ? "COMPLETE" : "PARTIAL", targets: [...new Map(selectedFacts.filter(fact => fact.target).map(fact => [JSON.stringify(fact.target), fact.target!])).values()].slice(0, 10), ...(!complete ? { notice: "Часть запрошенных учебных сведений недоступна или ограничена выборкой." } : {}) }, topic: plan.topic, sources, contextSent: !!provider && bounded.length > 0, modelUsed: provider ? process.env.GIGACHAT_MODEL ?? "GigaChat-2" : undefined, fallback: planFallback ?? (provider && !generated?.factIds.length ? unsafeWorkClaim ? "Статусы не позволяют определить невыполненные работы; показаны исходные записи." : inaccurateAbsence ? "Модель неверно обобщила известный результат; показаны исходные записи." : inventedTeacher ? "Модель назвала неподтверждённого преподавателя; показаны исходные записи." : missingTeacher ? "Модель не перечислила всех преподавателей из проверенных источников; показаны исходные записи." : inaccurateTeacherAbsence ? "Модель ошибочно сообщила об отсутствии известных преподавателей; показаны исходные записи." : "Модель не указала проверяемые источники; показаны исходные записи." : undefined) };
 }

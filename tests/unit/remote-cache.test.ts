@@ -38,6 +38,23 @@ describe("кэш данных только в памяти подтверждё�
     cache.dispose();
   });
 
+  it.each(["repeat", "empty"])("останавливает некорректную пагинацию (%s) без бесконечного запроса", async failure => {
+    const pageSchema = z.object({ data: z.object({ items: z.array(z.object({ scheduleId: z.string() })), nextCursor: z.string().nullable(), isComplete: z.boolean() }), meta: z.object({ completeness: z.boolean() }) });
+    const fetcher = vi.fn((input: RequestInfo | URL) => {
+      const next = new URL(String(input), "https://localhost").searchParams.has("cursor");
+      const items = next && failure === "empty" ? [] : [{ scheduleId: next ? "lesson-2" : "lesson-1" }];
+      return Promise.resolve(new Response(JSON.stringify({ data: { items, nextCursor: "same-cursor", isComplete: true }, meta: { completeness: true } }), {
+        status: 200, headers: { "Content-Type": "application/json", "X-Puls-Session-Scope": "student-a" },
+      }));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const cache = new RemoteCache("student-a"), entry = cache.entry("/schedule?limit=20", pageSchema, true);
+    await cache.ensure(entry);
+    expect(entry.state.kind).toBe("error");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    cache.dispose();
+  });
+
   it("не склеивает материалы и работы одной дисциплины при добавлении страницы", () => {
     const cache = new RemoteCache("student-a");
     const entry = cache.entry("/materials", z.object({ data: z.object({ items: z.array(z.any()) }) }));

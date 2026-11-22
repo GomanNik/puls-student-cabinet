@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { config } from 'dotenv';
 config({ path: '.env.test.local', override: true, quiet: true });
-const env = { ...process.env, PULS_ENV_FILE: '.env.test.local', PULS_UPSTREAM_PORT: '3001', PORT: '3001' };
+const env = { ...process.env, PULS_AI_PROVIDER: process.env.GIGACHAT_LIVE_TEST === '1' ? 'GIGACHAT' : 'DEMO_MOCK', PULS_ENV_FILE: '.env.test.local', PULS_UPSTREAM_PORT: '3001', PORT: '3001' };
 const children = [
   spawn(process.execPath, ['scripts/start.mjs'], { env, stdio: 'inherit', windowsHide: true }),
   spawn(process.execPath, ['scripts/local-https.mjs'], { env, stdio: 'inherit', windowsHide: true }),

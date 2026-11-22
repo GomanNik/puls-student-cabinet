@@ -1,0 +1,17 @@
+diff --git a/src/app/(student)/materials/screen.tsx b/src/app/(student)/materials/screen.tsx
+--- a/src/app/(student)/materials/screen.tsx
++++ b/src/app/(student)/materials/screen.tsx
+@@ -69,5 +69,5 @@
+     {meta.sourceStatus === "PARTIAL" && <p className="notice notice-warning" role="status">Показаны доступные материалы. Сведения источника могут быть неполными.</p>}
+     <div className="catalog-local-filters"><label>Поиск по названию<span><Search size={17} aria-hidden="true" /><input type="search" value={search} onChange={event => { setSearch(event.target.value); clearPageError(); }} placeholder="Название файла или ресурса" /></span></label><label>Формат<select value={format} onChange={event => { setFormat(event.target.value); clearPageError(); }}><option value="">Все форматы</option><option value="PDF">PDF</option><option value="DOCX">DOCX</option><option value="PPTX">PPTX</option><option value="XLSX">XLSX</option><option value="LINK">Ссылки</option></select></label><button type="button" onClick={reset}>Сбросить</button></div>
+-    <div className="catalog-head"><div><span className="page-hero-eyebrow">БИБЛИОТЕКА МАТЕРИАЛОВ</span><h2>Материалы занятий</h2></div><span>{files.length} файлов · {links.length} ссылок</span></div>
++    <div className="catalog-head"><div><span className="page-hero-eyebrow">БИБЛИОТЕКА МАТЕРИАЛОВ</span><h2>Материалы занятий</h2></div></div>
+     <div className="catalog-layout"><div className="catalog-primary">
+       {!!files.length && <section className="catalog-group" aria-labelledby="catalog-files"><header><BookOpen size={20} aria-hidden="true" /><h3 id="catalog-files">Учебные файлы</h3><span>{files.length}</span></header><div>{files.map(item => <MaterialRow item={item} key={item.materialId} />)}</div></section>}
+@@ -77,5 +77,5 @@
+       {searching && data.nextCursor && <p role="status" className="notice">Ищем в остальных доступных материалах…</p>}
+       {data.nextCursor && <div className="catalog-more"><Button variant="secondary" onClick={more} disabled={busy || state.refreshing}>{busy ? "Загружаем…" : searching ? "Продолжить поиск" : "Показать ещё материалы"}</Button></div>}
+-    </div><aside className="catalog-aside"><span className="page-hero-eyebrow">О КАТАЛОГЕ</span><h3>Найдите нужный материал</h3><p>Используйте поиск по названию и фильтр по формату. Откройте запись, чтобы посмотреть файл или перейти к внешнему ресурсу.</p><div className="catalog-stats"><div><strong>{data.items.filter(item => item.kind === "FILE").length}</strong><span>учебных файлов</span></div><div><strong>{data.items.filter(item => item.kind === "LINK").length}</strong><span>внешних ресурсов</span></div></div></aside></div>
++    </div><aside className="catalog-aside"><span className="page-hero-eyebrow">О КАТАЛОГЕ</span><h3>Найдите нужный материал</h3><p>Используйте поиск по названию и фильтр по формату. Откройте запись, чтобы посмотреть файл или перейти к внешнему ресурсу.</p></aside></div>
+   </>;
+ }

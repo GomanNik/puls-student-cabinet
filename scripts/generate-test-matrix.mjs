@@ -11,7 +11,7 @@ const aliases = {
   I1: "integration/auth.test.ts", I2: "integration/academic-projections.test.ts",
   I3: "integration/academic-operation-isolation.test.ts", I4: "integration/student-flows.test.ts",
   I5: "integration/delivery-recovery.test.ts", I6: "integration/assistant-context.test.ts",
-  I7: "integration/security-audit.test.ts",
+  I7: "integration/security-audit.test.ts", I8: "integration/grade-report.test.ts",
   E1: "e2e/auth.spec.ts", E2: "e2e/profile-resilience.spec.ts",
   E3: "e2e/student-journeys.spec.ts", E4: "e2e/academic-journeys.spec.ts",
   E5: "e2e/student-api.spec.ts", E6: "e2e/student-api-negative.spec.ts",
@@ -71,12 +71,13 @@ const scenarioRows = [...source.matchAll(/^## \d+\. (СЦ-\d{2}(?:[АБ]|\.[123]
 const methods = new Set(["get", "post", "head", "put", "patch", "delete"]);
 const operations = Object.entries(contract.paths).flatMap(([path, verbs]) => Object.entries(verbs)
   .filter(([method]) => methods.has(method)).map(([method, operation]) => ({ method: method.toUpperCase(), path, id: operation.operationId })));
-if (ftRows.length !== 77 || scenarioRows.length !== 31 || operations.length !== 49) throw Error(`Ожидалось 77/31/49, получено ${ftRows.length}/${scenarioRows.length}/${operations.length}`);
+if (ftRows.length !== 77 || scenarioRows.length !== 31 || operations.length !== 50) throw Error(`Ожидалось 77/31/50, получено ${ftRows.length}/${scenarioRows.length}/${operations.length}`);
 if (ft.size !== 77 || Object.keys(scenarios).length !== 31 || ftRows.some(row => !row.evidence) || scenarioRows.some(row => !row.evidence)) throw Error("В матрице есть пропущенные или лишние ID");
 for (const row of [...ftRows, ...scenarioRows]) ensureEvidence(row.evidence);
 const operationEvidence = ({ method, path }) => {
   if (path.startsWith("/auth/")) return "E1 I1 U3";
   if (path === "/profile") return "E2 E5 U3";
+  if (path === "/periods/{periodId}/grades") return "I8 U3";
   if (path.startsWith("/materials/") && method === "HEAD") return "E6 U3";
   if (path.startsWith("/materials/")) return "E5 E6 U3";
   if (path.startsWith("/requests") || path.startsWith("/appeals")) return "E5 E6 U3";
@@ -95,7 +96,7 @@ const result = [
   "", "## 31 пользовательский сценарий", "",
   "| ID | Сценарий | Тесты | Состояние |", "|---|---|---|---|",
   ...scenarioRows.map(row => `| ${row.id} | ${row.title} | ${links(row.evidence)} | ${row.id === "СЦ-14А" ? "вне MVP" : row.id === "СЦ-18" ? "ручная" : partialScenarios.has(row.id) ? "частично" : "авто"} |`),
-  "", "## 49 операций собственного API", "",
+  "", "## 50 операций собственного API", "",
   "Все операции проверяются статическим инвентарём OpenAPI ↔ Route Handlers (`U3`). Приведённый E2E-тест вызывает соответствующий HTTP-маршрут; матрица не означает проверки всех ошибок каждой операции.", "",
   "| Метод и путь | operationId | Тесты |", "|---|---|---|",
   ...operations.map(row => `| \`${row.method} ${row.path}\` | \`${row.id}\` | ${links(operationEvidence(row))} |`),

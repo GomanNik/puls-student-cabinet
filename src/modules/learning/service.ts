@@ -1,17 +1,18 @@
 import "server-only";
-import type { AcademicPeriod, AcademicUnit, AcademicWork, ExternalRef, WorkProgress as SourceProgress, Material as SourceMaterial, SourceAvailability, RequestedScope, AssessmentValue as SourceValue } from "@/server/integrations/contracts";
+import type { AcademicPeriod, AcademicUnit, AcademicWork, AssessmentComponent as SourceAssessment, ExternalRef, WorkProgress as SourceProgress, WorkResult as SourceWorkResult, Material as SourceMaterial, SourceAvailability, RequestedScope, AssessmentValue as SourceValue } from "@/server/integrations/contracts";
 import type { LearningPort, SourceLearningScope } from "@/server/integrations/learning-port";
 import { StudentAcademicContext, audienceAllowed } from "@/modules/student-context/scope";
-import type { AcademicDate, AssessmentValue, DataState, IndependentUnitSummary, ListStatus, Material, OfferingDetail, PartialError, ResponseMeta, ResultsView, Stage, TimelineEntry, WorkDetail, WorkProgress, WorkSummary } from "@/shared/contracts/student-api";
-import { pageSlice } from "@/shared/server/references";
+import type { AcademicDate, AssessmentValue, DataState, IndependentUnitSummary, ListStatus, Material, OfferingDetail, PartialError, PublishedWorkResult, ResponseMeta, ResultsView, Stage, TimelineEntry, WorkCounts, WorkDetail, WorkProgress, WorkSummary } from "@/shared/contracts/student-api";
+import { pageSlice, pageSliceWithNavigation } from "@/shared/server/references";
 import { notFound } from "@/shared/server/route";
 import { AppError } from "@/shared/server/errors";
-import { ScheduleService } from "@/modules/schedule/service";
+import { ScheduleService, type RelatedClassDetail } from "@/modules/schedule/service";
 import { localDay } from "@/shared/lib/dates";
 import type { AcademicSearchResult, Target } from "@/shared/contracts/student-api";
 
 import { securityAudit } from "@/shared/server/security-audit";
 import type { GradeRow } from "./grades-contract";
+import { getWorkStatus, isAwaitingReview } from "./work-status";
 
 type Read<T> = { sourceCode: string; requestedScope: RequestedScope; availability: SourceAvailability; isComplete: boolean | null; items: T[]; sourceRevision?: string };
 type Slice<T> = { items: T[]; state: DataState; complete: boolean | null; errors: PartialError[]; dataset?: PartialError["dataset"] };
@@ -103,81 +104,288 @@ export class LearningService {
     if (items.length !== slice.items.length) { slice.complete = false; slice.errors.push({ dataset: "WORK", code: "SOURCE_INVALID" }); }
     return { ...slice, items };
   }
-  workSummary(binding: LearningBinding, raw: AcademicWork, progress?: SourceProgress, progressState?: DataState): WorkSummary {
+  private workProgress(progress?: SourceProgress, progressState?: DataState, progressComplete?: boolean): WorkProgress {
+    if (progress) return this.progress(progress);
+    if (progressState === "SOURCE_ERROR") return { dataState: "SOURCE_ERROR" };
+    if (progressState === "NOT_APPLICABLE") return { dataState: "NOT_APPLICABLE" };
+    // Полный источник не вернул запись по конкретной работе: студент ещё не начинал её.
+    if (progressComplete === true && (progressState === "READY" || progressState === "EMPTY_CONFIRMED")) {
+      return { dataState: "READY", assignmentStatusCode: "Выдано" };
+    }
+    return unknownProgress();
+  }
+  workSummary(
+    binding: LearningBinding,
+    raw: AcademicWork,
+    progress?: SourceProgress,
+    progressState?: DataState,
+    progressComplete?: boolean,
+    publishedResult?: PublishedWorkResult | null,
+  ): WorkSummary {
     const id = this.id(binding, "work", raw.workId);
-    return { workId: id, periodId: binding.publicPeriod, ...(binding.kind === "OFFERING" ? { offeringId: binding.publicContext } : { unitId: binding.publicContext }), title: raw.title,
-      workTypeLabel: raw.workTypeLabel, ...(raw.issued ? { issued: raw.issued } : {}), ...(raw.due ? { due: raw.due } : {}), progress: progress ? this.progress(progress) : progressState === "SOURCE_ERROR" ? { dataState: "SOURCE_ERROR" } : unknownProgress(), target: { kind: "WORK", targetRef: id } };
+    return {
+      workId: id,
+      periodId: binding.publicPeriod,
+      ...(binding.kind === "OFFERING" ? { offeringId: binding.publicContext } : { unitId: binding.publicContext }),
+      title: raw.title,
+      workTypeLabel: raw.workTypeLabel,
+      ...(raw.issued ? { issued: raw.issued } : {}),
+      ...(raw.due ? { due: raw.due } : {}),
+      progress: this.workProgress(progress, progressState, progressComplete),
+      ...(publishedResult !== undefined ? { publishedResult } : {}),
+      target: { kind: "WORK", targetRef: id },
+    };
+  }
+  private async workResultSummaries(binding: LearningBinding, candidates: AcademicWork[]) {
+    const byWork = new Map<string, PublishedWorkResult | null | undefined>();
+    const slices: Slice<unknown>[] = [];
+    for (let offset = 0; offset < candidates.length; offset += 4) {
+      const batch = await Promise.all(candidates.slice(offset, offset + 4).map(async work => {
+        const read = await this.read(
+          binding,
+          () => this.port.getWorkResults(binding.source, work.workId),
+          "ASSESSMENT",
+          result => result.workId === work.workId && result.externalStudentId === this.context.identity.externalStudentId,
+        );
+        const latest = read.items.reduce<SourceWorkResult | undefined>((current, item) => {
+          if (!current) return item;
+          return (item.assessedAt ?? "").localeCompare(current.assessedAt ?? "") > 0 ? item : current;
+        }, undefined);
+        const publishedResult: PublishedWorkResult | null | undefined = latest
+          ? { value: this.value(latest.value), ...(latest.assessedAt ? { assessedAt: latest.assessedAt } : {}) }
+          : read.complete === true ? null : undefined;
+        return { workId: work.workId, read, publishedResult };
+      }));
+      for (const item of batch) {
+        byWork.set(item.workId, item.publishedResult);
+        slices.push(item.read);
+      }
+    }
+    return { byWork, slices };
+  }
+  private async linkedWorkResults(binding: LearningBinding, works: AcademicWork[]) {
+    if (binding.kind !== "OFFERING") return { components: [], slice: null };
+    const slice = await this.read(
+      binding,
+      () => this.port.getAssessments(binding.source),
+      "ASSESSMENT",
+      component => component.offeringId === binding.source.offeringId,
+    );
+    const components = slice.items.flatMap((component: SourceAssessment) => {
+      if (!component.value || !component.linkedWorkRef) return [];
+      const work = works.find(item =>
+        item.ref.sourceCode === component.linkedWorkRef!.sourceCode
+        && item.ref.externalId === component.linkedWorkRef!.externalId
+        && item.ref.objectKind === component.linkedWorkRef!.objectKind,
+      );
+      if (!work) return [];
+      return [{
+        linkedWorkId: this.id(binding, "work", work.workId),
+        value: this.value(component.value),
+        ...(component.assessedAt ? { assessedAt: component.assessedAt } : {}),
+      }];
+    });
+    return { components, slice };
+  }
+  private mergeLinkedResults(
+    binding: LearningBinding,
+    works: AcademicWork[],
+    publishedByWork: Map<string, PublishedWorkResult | null | undefined>,
+    components: Array<Pick<ResultsView["components"][number], "linkedWorkId" | "value" | "assessedAt">>,
+    componentsComplete: boolean,
+  ) {
+    for (const work of works) {
+      const linked = components.find(component => component.linkedWorkId === this.id(binding, "work", work.workId) && component.value);
+      if (linked?.value) {
+        const current = publishedByWork.get(work.workId);
+        if (!current || (linked.assessedAt ?? "").localeCompare(current.assessedAt ?? "") > 0) {
+          publishedByWork.set(work.workId, {
+            value: linked.value,
+            ...(linked.assessedAt ? { assessedAt: linked.assessedAt } : {}),
+          });
+        }
+      } else if (!componentsComplete && publishedByWork.get(work.workId) === null) {
+        // Неполный список оценок не подтверждает отсутствие результата по связанной работе.
+        publishedByWork.set(work.workId, undefined);
+      }
+    }
+    return publishedByWork;
   }
   async listWorks(binding: LearningBinding, limit: number, cursor?: string, selection?: WorkSelection) {
     const slice = await this.works(binding);
     if (slice.state === "SOURCE_ERROR") throw new AppError(503, "EXTERNAL_UNAVAILABLE", "Источник работ временно недоступен.");
     const progress = await this.progressSlice(binding, slice.items);
-    const results: Slice<unknown>[] = [], resultIds = new Set<string>();
-    if (selection?.filter === "RESULT") for (const work of slice.items) {
-      const read = await this.read(binding, () => this.port.getWorkResults(binding.source, work.workId), "ASSESSMENT", r => r.workId === work.workId && r.externalStudentId === this.context.identity.externalStudentId);
-      results.push(read); if (read.items.length) resultIds.add(work.workId);
-    }
+    const [publishedResults, linkedResults] = await Promise.all([
+      this.workResultSummaries(binding, slice.items),
+      this.linkedWorkResults(binding, slice.items),
+    ]);
+    const publishedByWork = this.mergeLinkedResults(
+      binding,
+      slice.items,
+      new Map(publishedResults.byWork),
+      linkedResults.components,
+      binding.kind !== "OFFERING" || linkedResults.slice?.complete === true,
+    );
+    const summaries = slice.items.map(work => this.workSummary(
+      binding,
+      work,
+      progress.items.find(item => item.workId === work.workId),
+      progress.state,
+      progress.complete === true,
+      publishedByWork.get(work.workId),
+    ));
     const normalized = selection?.query.normalize("NFKC").toLocaleLowerCase("ru-RU").trim();
-    const items = slice.items.filter(w => (!normalized || w.title.normalize("NFKC").toLocaleLowerCase("ru-RU").includes(normalized)) && (selection?.filter !== "DUE" || !!w.due) && (selection?.filter !== "RESULT" || resultIds.has(w.workId)) && (selection?.filter !== "REVIEW" || !!progress.items.find(p => p.workId === w.workId && p.submittedAt && !p.reviewedAt && !p.reviewStatusCode)))
-      .map(w => this.workSummary(binding, w, progress.items.find(p => p.workId === w.workId), progress.state));
+    const items = summaries.filter(work =>
+      (!normalized || work.title.normalize("NFKC").toLocaleLowerCase("ru-RU").includes(normalized))
+      && (selection?.filter !== "DUE" || !!work.due)
+      && (selection?.filter !== "RESULT" || work.publishedResult != null)
+      && (selection?.filter !== "REVIEW" || isAwaitingReview(work.progress, work.publishedResult)),
+    );
     const dateKey = (date?: AcademicDate) => date?.on ?? (date?.at && date.timeZone ? localDay(date.at, date.timeZone) : undefined);
     items.sort((a, b) => {
       if (selection?.sort === "TITLE") return a.title.localeCompare(b.title, "ru-RU") || a.workId.localeCompare(b.workId);
       const issued = selection?.sort === "ISSUED", first = dateKey(issued ? a.issued : a.due), second = dateKey(issued ? b.issued : b.due);
       return (!first && second ? 1 : first && !second ? -1 : first && second ? (issued ? second.localeCompare(first) : first.localeCompare(second)) : 0) || a.workId.localeCompare(b.workId);
     });
-    const meta = this.meta([slice, progress, ...results]);
-    return { data: { ...pageSlice(items, this.context.auth.accountId, selection ? ["works-selection", binding.publicPeriod, binding.publicContext, selection.filter, selection.sort, normalized, limit] : ["works", binding.publicPeriod, binding.publicContext, limit], this.context.revision, limit, cursor), isComplete: meta.completeness ?? null, dataState: items.length ? "READY" as const : meta.completeness ? "EMPTY_CONFIRMED" as const : "UNKNOWN" as const }, meta };
+    const meta = this.meta([slice, progress, ...publishedResults.slices, ...(linkedResults.slice ? [linkedResults.slice] : [])]);
+    return { data: { ...pageSliceWithNavigation(items, this.context.auth.accountId, selection ? ["works-selection", binding.publicPeriod, binding.publicContext, selection.filter, selection.sort, normalized, limit] : ["works", binding.publicPeriod, binding.publicContext, limit], this.context.revision, limit, cursor), isComplete: meta.completeness ?? null, dataState: items.length ? "READY" as const : meta.completeness ? "EMPTY_CONFIRMED" as const : "UNKNOWN" as const }, meta };
   }
   private value(raw: SourceValue): AssessmentValue { return { kind: raw.kind, ...(raw.numeric != null ? { numeric: raw.numeric } : {}), ...(raw.text != null ? { text: raw.text } : {}), ...(raw.code != null ? { code: raw.code } : {}), ...(raw.rawValueText != null ? { rawValueText: raw.rawValueText } : {}) }; }
   async materials(binding: LearningBinding, works?: AcademicWork[]) {
     const scope = await this.context.resolve(binding.period, this.date(binding.period));
-    const slice = await this.read(binding, () => this.port.getMaterials(binding.source), "MATERIAL", m => m.offeringId === binding.source.offeringId && m.unitId === binding.source.unitId && m.audiences.some(a => audienceAllowed(scope, a, binding.source.offeringId)));
+    const slice = await this.read(
+      binding,
+      () => this.port.getMaterials(binding.source),
+      "MATERIAL",
+      m => m.offeringId === binding.source.offeringId &&
+        m.unitId === binding.source.unitId &&
+        m.audiences.some(a => audienceAllowed(scope, a, binding.source.offeringId)),
+    );
     const allowedWorks = works ?? (await this.works(binding)).items;
+
+    const refs = new Map<string, ExternalRef>();
+    for (const material of slice.items) {
+      for (const ref of material.relatedClassRefs ?? []) {
+        refs.set(`${ref.sourceCode}\0${ref.objectKind}\0${ref.externalId}`, ref);
+      }
+    }
+
+    let relatedClasses: RelatedClassDetail[] = [];
+    if (refs.size > 0) {
+      try {
+        if (!binding.source.offeringId) throw new Error("Для связи с занятием не указана дисциплина.");
+        const linked = await this.schedule.relatedClassesWithDetails(binding.period, binding.source.offeringId, [...refs.values()]);
+        relatedClasses = linked.items;
+        slice.complete = slice.complete === true && linked.complete;
+      } catch (error) {
+        if (error instanceof AppError && error.code === "SOURCE_REVISION_CHANGED") throw error;
+        slice.complete = false;
+      }
+      if (slice.complete !== true) slice.errors.push({ dataset: "MATERIAL", code: "SOURCE_INCOMPLETE" });
+    }
+
     const items: Material[] = [];
     for (const m of slice.items) {
       const id = this.id(binding, "material", m.materialId);
       let safeExternalUrl: string | undefined;
       if (m.kind === "LINK") {
-        try { const url = new URL(m.publicHttpsUrl!); if (url.protocol === "https:" && !url.username && !url.password && url.hostname === "example.org") safeExternalUrl = url.toString(); } catch { /* Некорректная ссылка не выдаётся. */ }
+        try {
+          const url = new URL(m.publicHttpsUrl!);
+          if (url.protocol === "https:" && !url.username && !url.password && url.hostname === "example.org") safeExternalUrl = url.toString();
+        } catch { /* Некорректная ссылка не выдаётся. */ }
         if (!safeExternalUrl) { slice.complete = false; slice.errors.push({ dataset: "MATERIAL", code: "SOURCE_INVALID" }); continue; }
-      } else if (!m.resourceHandle) { slice.complete = false; continue; }
-      let relatedScheduleIds:string[]=[];
-      if(m.relatedClassRefs?.length){
-        try{if(!binding.source.offeringId)throw Error("Нет дисциплины для связи с занятием");const linked=await this.schedule.relatedClasses(binding.period,binding.source.offeringId,m.relatedClassRefs);relatedScheduleIds=linked.ids;slice.complete=slice.complete===true&&linked.complete;}
-        catch(error){if(error instanceof AppError&&error.code==="SOURCE_REVISION_CHANGED")throw error;slice.complete=false;}
-        if(!slice.complete)slice.errors.push({dataset:"MATERIAL",code:"SOURCE_INCOMPLETE"});
+      } else if (!m.resourceHandle) {
+        slice.complete = false;
+        continue;
       }
-      items.push({ materialId: id, title: m.title, kind: m.kind, ...(m.mimeType ? { mimeType: m.mimeType } : {}), ...(m.sizeBytes != null ? { sizeBytes: m.sizeBytes } : {}),
-        ...(binding.kind === "OFFERING" ? { offeringId: binding.publicContext } : { unitId: binding.publicContext }), relatedWorkIds: allowedWorks.filter(w => m.relatedWorkRefs?.some(r => r.sourceCode === w.ref.sourceCode && r.objectKind === w.ref.objectKind && r.externalId === w.ref.externalId)).map(w => this.id(binding, "work", w.workId)),
-        ...(relatedScheduleIds.length?{relatedScheduleIds}:{}),...(safeExternalUrl ? { safeExternalUrl } : { downloadTarget: { kind: "MATERIAL", targetRef: id } }) });
+
+      const linked = relatedClasses.filter(lesson => m.relatedClassRefs?.some(ref =>
+        ref.sourceCode === lesson.ref.sourceCode &&
+        ref.objectKind === lesson.ref.objectKind &&
+        ref.externalId === lesson.ref.externalId,
+      ));
+      const relatedLessons = linked.map(lesson => ({
+        scheduleId: lesson.scheduleId,
+        disciplineTitle: binding.title,
+        plannedStart: lesson.plannedStart,
+        timeZone: lesson.timeZone,
+        ...(lesson.topic ? { topic: lesson.topic } : {}),
+      }));
+      const relatedScheduleIds = relatedLessons.map(lesson => lesson.scheduleId);
+      items.push({
+        materialId: id,
+        title: m.title,
+        kind: m.kind,
+        ...(m.mimeType ? { mimeType: m.mimeType } : {}),
+        ...(m.sizeBytes != null ? { sizeBytes: m.sizeBytes } : {}),
+        ...(binding.kind === "OFFERING" ? { offeringId: binding.publicContext } : { unitId: binding.publicContext }),
+        relatedWorkIds: allowedWorks.filter(w => m.relatedWorkRefs?.some(r =>
+          r.sourceCode === w.ref.sourceCode && r.objectKind === w.ref.objectKind && r.externalId === w.ref.externalId,
+        )).map(w => this.id(binding, "work", w.workId)),
+        ...(relatedLessons.length ? { relatedScheduleIds, relatedLessons } : {}),
+        ...(safeExternalUrl ? { safeExternalUrl } : { downloadTarget: { kind: "MATERIAL" as const, targetRef: id } }),
+      });
     }
     return { slice, items };
   }
-  async workDetail(binding: LearningBinding, publicWork: string, stageRef?: string): Promise<{ data: WorkDetail; meta: ResponseMeta }> {
+  async workDetail(binding: LearningBinding, publicWork: string, stageRef?: string, includeLinkedResult = true): Promise<{ data: WorkDetail; meta: ResponseMeta }> {
     const works = await this.works(binding);
     if (works.state === "SOURCE_ERROR") throw new AppError(503, "EXTERNAL_UNAVAILABLE", "Источник работ недоступен.");
     const work = works.items.find(w => this.id(binding, "work", w.workId) === publicWork);
     if (!work) { if (works.complete !== true) throw new AppError(503, "EXTERNAL_UNAVAILABLE", "Источник работ неполон. Попробуйте ещё раз."); throw notFound(); }
-    const [progress, stages, stageProgress, results, materials] = await Promise.all([
+    const [progress, stages, stageProgress, results, materials, linkedResults] = await Promise.all([
       this.progressSlice(binding, works.items),
       this.read(binding, () => this.port.getStages(binding.source, work.workId), "STAGE", s => s.workId === work.workId),
       this.read(binding, () => this.port.getStageProgress(binding.source, work.workId), "STAGE", p => p.externalStudentId === this.context.identity.externalStudentId),
-      this.read(binding, () => this.port.getWorkResults(binding.source, work.workId), "ASSESSMENT", r => r.workId === work.workId && r.externalStudentId === this.context.identity.externalStudentId), this.materials(binding, works.items),
+      this.read(binding, () => this.port.getWorkResults(binding.source, work.workId), "ASSESSMENT", r => r.workId === work.workId && r.externalStudentId === this.context.identity.externalStudentId),
+      this.materials(binding, works.items),
+      binding.kind === "OFFERING" && includeLinkedResult
+        ? this.linkedWorkResults(binding, works.items)
+        : Promise.resolve(null),
     ]);
-    const sourceProgress = progress.items.find(p => p.workId === work.workId), status = sourceProgress ? this.progress(sourceProgress) : progress.state === "SOURCE_ERROR" ? { dataState: "SOURCE_ERROR" as const } : unknownProgress();
+    const sourceProgress = progress.items.find(p => p.workId === work.workId);
+    const status = this.workProgress(sourceProgress, progress.state, progress.complete === true);
     const boundStageProgress = stageProgress.items.filter(p => stages.items.some(s => s.stageId === p.stageId) && stageProgress.items.filter(other => other.stageId === p.stageId).length === 1);
     if (boundStageProgress.length !== stageProgress.items.length) { stageProgress.complete = false; stageProgress.errors.push({ dataset: "STAGE", code: "SOURCE_INVALID" }); }
     const publicStages: Stage[] = stages.items.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.stageId.localeCompare(b.stageId)).map(s => {
       const p = boundStageProgress.find(p => p.stageId === s.stageId);
-      return { stageId: this.id(binding, "stage", s.stageId), title: s.title, ...(s.description ? { description: s.description } : {}), ...(s.displayOrder != null ? { displayOrder: s.displayOrder } : {}), ...(s.due ? { due: s.due } : {}), progress: p ? this.progress({ ...p, workId: work.workId }) : stageProgress.state === "SOURCE_ERROR" ? { dataState: "SOURCE_ERROR" } : unknownProgress() };
+      return { stageId: this.id(binding, "stage", s.stageId), title: s.title, ...(s.description ? { description: s.description } : {}), ...(s.displayOrder != null ? { displayOrder: s.displayOrder } : {}), ...(s.due ? { due: s.due } : {}), progress: p
+        ? this.progress({ ...p, workId: work.workId })
+        : stageProgress.state === "SOURCE_ERROR"
+          ? { dataState: "SOURCE_ERROR" }
+          : stageProgress.state === "NOT_APPLICABLE"
+            ? { dataState: "NOT_APPLICABLE" }
+            : stageProgress.complete === true
+              ? { dataState: "READY", assignmentStatusCode: "Выдано" }
+              : unknownProgress() };
     });
     if (stageRef && !publicStages.some(s => s.stageId === stageRef)) throw notFound();
     const validResults = results.items.filter(r => !r.stageId || stages.items.some(s => s.stageId === r.stageId));
     if (validResults.length !== results.items.length) { results.complete = false; results.errors.push({ dataset: "ASSESSMENT", code: "SOURCE_INVALID" }); }
-    return { data: { work: this.workSummary(binding, work, sourceProgress, progress.state), ...(work.description ? { description: work.description } : {}), ...(work.topicLabel ? { topic: work.topicLabel } : {}),
+    const latestResult = validResults.reduce<SourceWorkResult | undefined>((current, item) => {
+      if (!current) return item;
+      return (item.assessedAt ?? "").localeCompare(current.assessedAt ?? "") > 0 ? item : current;
+    }, undefined);
+    const linkedResult = linkedResults?.components.find(component => component.linkedWorkId === publicWork && component.value);
+    const directPublished: PublishedWorkResult | undefined = latestResult
+      ? { value: this.value(latestResult.value), ...(latestResult.assessedAt ? { assessedAt: latestResult.assessedAt } : {}) }
+      : undefined;
+    const linkedPublished: PublishedWorkResult | undefined = linkedResult?.value
+      ? { value: linkedResult.value, ...(linkedResult.assessedAt ? { assessedAt: linkedResult.assessedAt } : {}) }
+      : undefined;
+    let publishedResult: PublishedWorkResult | null | undefined;
+    if (directPublished && linkedPublished) {
+      publishedResult = (linkedPublished.assessedAt ?? "").localeCompare(directPublished.assessedAt ?? "") > 0
+        ? linkedPublished
+        : directPublished;
+    } else if (directPublished || linkedPublished) {
+      publishedResult = directPublished ?? linkedPublished;
+    } else if (results.complete === true && (binding.kind !== "OFFERING" || linkedResults?.slice?.complete === true)) {
+      publishedResult = null;
+    }
+    return { data: { work: this.workSummary(binding, work, sourceProgress, progress.state, progress.complete === true, publishedResult), ...(work.description ? { description: work.description } : {}), ...(work.topicLabel ? { topic: work.topicLabel } : {}),
       progress: status, stages: publicStages, stagesState: listStatus(stages), results: validResults.map(r => ({ resultId: this.id(binding, "work-result", r.resultId), value: this.value(r.value), ...(r.stageId ? { stageId: this.id(binding, "stage", r.stageId) } : {}), ...(r.assessedAt ? { assessedAt: r.assessedAt } : {}) })), resultsState: listStatus(results),
-      relatedMaterials: materials.items.filter(m => m.relatedWorkIds?.includes(publicWork)), materialsState: listStatus(materials.slice), ...(stageRef ? { focusStageId: stageRef } : {}) }, meta: this.meta([works, progress, stages, stageProgress, results, materials.slice]) };
+      relatedMaterials: materials.items.filter(m => m.relatedWorkIds?.includes(publicWork)), materialsState: listStatus(materials.slice), ...(stageRef ? { focusStageId: stageRef } : {}) }, meta: this.meta([works, progress, stages, stageProgress, results, materials.slice, ...(linkedResults?.slice ? [linkedResults.slice] : [])]) };
   }
   // Проекция исходных дат; не создаёт самостоятельных копий учебных событий.
   async calendarFacts(binding: LearningBinding) {
@@ -207,8 +415,8 @@ export class LearningService {
     const confirmed=new Set(deadlines.items.map(d=>d.deadlineId));
     return {facts:facts.filter(f=>confirmed.has(f.sourceId)),complete:complete&&deadlines.complete===true&&confirmed.size===facts.length};
   }
-  async results(binding: LearningBinding) {
-    const works = await this.works(binding);
+  async results(binding: LearningBinding, worksSlice?: Slice<AcademicWork>) {
+    const works = worksSlice ?? await this.works(binding);
     const [grading, components, attestations, official] = await Promise.all([
       this.read(binding, () => this.port.getGradingModel(binding.source), "ASSESSMENT", g => g.offeringId === binding.source.offeringId),
       this.read(binding, () => this.port.getAssessments(binding.source), "ASSESSMENT", c => c.offeringId === binding.source.offeringId),
@@ -299,7 +507,7 @@ export class LearningService {
         ...(when ? { when } : {}), resultState: result.state, ...(result.state !== "UNKNOWN" && result.value ? { value: result.value } : {}) });
     };
     for (const work of works.items) {
-      const detail = await this.workDetail(binding, this.id(binding, "work", work.workId)), target = detail.data.work.target;
+      const detail = await this.workDetail(binding, this.id(binding, "work", work.workId), undefined, false), target = detail.data.work.target;
       if (detail.meta.completeness !== true) errors.push({ items: [], state: "UNKNOWN", complete: false, errors: detail.meta.partialErrors ?? [] });
       add(work.workId, "ISSUED", work.issued, work.title, target); add(work.workId, "DUE", work.due, work.title, target);
       add(work.workId, "COMPLETED", instant(detail.data.progress.completedAt), work.title, target); add(work.workId, "SUBMITTED", instant(detail.data.progress.submittedAt), work.title, target);
@@ -345,16 +553,51 @@ export class LearningService {
   }
   async offeringDetail(binding: LearningBinding) {
     if (binding.kind !== "OFFERING") throw notFound();
-    const works = await this.works(binding), progress = await this.progressSlice(binding, works.items), [results, materials] = await Promise.all([this.results(binding), this.materials(binding, works.items)]);
+    const works = await this.works(binding), progress = await this.progressSlice(binding, works.items);
+    const [results, materials, publishedResults] = await Promise.all([
+      this.results(binding, works),
+      this.materials(binding, works.items),
+      this.workResultSummaries(binding, works.items),
+    ]);
+    const progressByWork = new Map(progress.items.map(item => [item.workId, item]));
+    const publishedByWork = this.mergeLinkedResults(
+      binding,
+      works.items,
+      new Map(publishedResults.byWork),
+      results.data.components,
+      results.data.componentsState.isComplete === true,
+    );
+    const summaries = works.items.map(work => this.workSummary(
+      binding,
+      work,
+      progressByWork.get(work.workId),
+      progress.state,
+      progress.complete === true,
+      publishedByWork.get(work.workId),
+    ));
+    const countsComplete = works.complete === true
+      && progress.complete === true
+      && publishedResults.slices.every(item => item.complete === true)
+      && results.data.componentsState.isComplete === true;
+    const workCounts: WorkCounts = {
+      total: works.complete === true ? works.items.length : null,
+      reviewed: countsComplete ? summaries.filter(work => {
+        const status = getWorkStatus(work.progress, work.publishedResult);
+        return status === "REVIEWED" || status === "RESULT_PUBLISHED" || status === "NEEDS_REVISION";
+      }).length : null,
+      awaitingReview: countsComplete
+        ? summaries.filter(work => isAwaitingReview(work.progress, work.publishedResult)).length
+        : null,
+    };
     const period = binding.period;
     let sessions: Awaited<ReturnType<ScheduleService["sessions"]>> | null = null;
     try { sessions = period.startsOn && period.endsOn ? await this.schedule.sessions(binding.publicPeriod, binding.publicContext, { from: period.startsOn, to: period.endsOn }, 20) : null; }
     catch (error) { if (error instanceof AppError && error.code === "SOURCE_REVISION_CHANGED") throw error; }
-    const workPage = pageSlice(works.items.map(w => this.workSummary(binding, w, progress.items.find(p => p.workId === w.workId), progress.state)), this.context.auth.accountId, ["works", binding.publicPeriod, binding.publicContext, 20], this.context.revision, 20);
+    const workPage = pageSlice(summaries, this.context.auth.accountId, ["works", binding.publicPeriod, binding.publicContext, 20], this.context.revision, 20);
     const data: OfferingDetail = { offering: await this.schedule.summary(binding.period, binding.source.offeringId!), sessions: sessions?.data.items ?? [], sessionsState: sessions ? { dataState: sessions.data.dataState, isComplete: sessions.data.isComplete, nextCursor: sessions.data.nextCursor } : { dataState: "SOURCE_ERROR", isComplete: false, nextCursor: null },
-      works: workPage.items, worksState: { ...listStatus(works), nextCursor: workPage.nextCursor }, results: results.data, materials: materials.items, materialsState: listStatus(materials.slice),
+      works: workPage.items, worksState: { ...listStatus(works), nextCursor: workPage.nextCursor }, workCounts, results: results.data, materials: materials.items, materialsState: listStatus(materials.slice),
       progressLines: { activity: works.state, completion: progress.state === "SOURCE_ERROR" ? "SOURCE_ERROR" : progress.items.some(p => p.completionStatusCode || p.completedAt) ? "READY" : "UNKNOWN", results: results.data.officialResultState } };
-    return { data, meta: this.meta([works, progress, ...results.slices, materials.slice, ...(!sessions || sessions.meta.completeness === false ? [{ items: [], complete: false, state: "SOURCE_ERROR" as const, errors: sessions?.meta.partialErrors ?? [{ dataset: "SCHEDULE" as const, code: "SOURCE_UNAVAILABLE" as const }] }] : [])]) };
+    return { data, meta: this.meta([works, progress, ...publishedResults.slices, ...results.slices, materials.slice, ...(!sessions || sessions.meta.completeness === false ? [{ items: [], complete: false, state: "SOURCE_ERROR" as const, errors: sessions?.meta.partialErrors ?? [{ dataset: "SCHEDULE" as const, code: "SOURCE_UNAVAILABLE" as const }] }] : [])]) };
   }
   async sourceMaterial(binding: LearningBinding, publicId: string): Promise<SourceMaterial> {
     const { slice, items } = await this.materials(binding);

@@ -929,6 +929,9 @@ body { min-width:0; }
 .agenda-day-items { display:grid; gap:7px; min-width:0; }
 .agenda-lesson { display:grid; grid-template-columns:76px minmax(0,1fr) minmax(112px,auto) 17px; gap:12px; align-items:center; min-width:0; padding:11px 12px; border:1px solid #EEE2E6; border-radius:11px; color:inherit; background:#FFFDFC; text-decoration:none; transition:border-color .15s,background .15s,transform .15s; }
 .agenda-lesson:hover { transform:translateY(-1px); border-color:#DCB9C5; background:#FFF8FA; }
+.agenda-lesson-cancelled { border-color:#E2D7DA; background:#F7F3F4; }
+.agenda-lesson-cancelled .agenda-lesson-time, .agenda-lesson-cancelled .agenda-lesson-copy>strong { color:#746A6E; }
+.agenda-lesson-cancelled .agenda-lesson-tags i:last-child { color:#763A49; background:#F2E2E6; }
 .agenda-lesson-time { display:grid; gap:2px; padding-right:9px; border-right:1px solid #F0E4E8; color:#981B46; font-variant-numeric:tabular-nums; }
 .agenda-lesson-time strong { font-size:12px; font-weight:850; }
 .agenda-lesson-time small { color:#9A818C; font-size:9px; font-weight:700; }
@@ -1131,6 +1134,7 @@ body { min-width:0; }
 .notification-r9-toolbar label { display:grid; gap:4px; color:#806B75; font-size:9px; font-weight:750; }
 .notification-r9-toolbar select { min-width:190px; height:36px; padding:0 8px; border:1px solid #E5D7DD; border-radius:8px; color:#4E3944; background:#FFF; font-size:10px; }
 .notification-r9-panel>.record-list { display:grid; gap:0; }
+.notification-r9-panel>.button { margin:0 18px 18px; }
 .notification-r9-row { display:grid; grid-template-columns:44px minmax(0,1fr) auto 22px; align-items:start; gap:13px; padding:17px 18px; border-bottom:1px solid #F0E5E8; }
 .notification-r9-row:last-child { border-bottom:0; }
 .notification-r9-unread { background:#FFFBFC; }
@@ -1547,4 +1551,166 @@ body { min-width:0; }
   .agenda-lesson-meta,
   .agenda-lesson-tags i { font-size:11px; }
   .catalog-row-copy small { font-size:12px; }
+}
+
+/* Единое представление состояния учебных работ */
+.work-status { display:inline-flex; align-items:center; width:max-content; max-width:100%; white-space:normal; }
+.work-status--result_published,.work-status--reviewed { color:#24613D; background:#EAF5EE; }
+.work-status--awaiting_review { color:#875711; background:#FFF3DF; }
+.work-status--needs_revision,.work-status--not_submitted,.work-status--not_completed { color:#963A45; background:#FBEDEF; }
+.work-status--in_progress,.work-status--completed { color:#76551B; background:#F7F1E6; }
+.work-status--not_started,.work-status--uncertain,.work-status--unavailable,.work-status--not_applicable { color:#66545C; background:#F1ECEF; }
+.work-card-top { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.work-card-top>.status-tag { justify-self:start; }
+.learning-r9-main .work-card h3 a { color:inherit; text-decoration:none; }
+.learning-r9-main .work-card h3 a:hover { color:#A80D42; text-decoration:underline; }
+.learning-r9-main .work-card-facts span:last-child { color:inherit; font-weight:500; }
+.learning-r9-main .work-card-open { justify-self:start; margin-top:3px; }
+.discipline-attention-item>.work-status { flex:none; }
+.discipline-result-card { min-height:0; }
+.discipline-result-card .work-card-top { margin-bottom:2px; }
+.discipline-result-card h3 a { color:inherit; text-decoration:none; }
+.discipline-result-card h3 a:hover { color:#A80D42; text-decoration:underline; }
+.discipline-result-value { display:flex; align-items:baseline; justify-content:space-between; gap:14px; padding-top:8px; border-top:1px solid #F0E4E8; color:#705B64; font-size:13px; }
+.discipline-result-value strong { color:#A70C3D; font-size:18px; }
+.learning-work-state { align-self:start; }
+.learning-work-state-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
+.learning-work-state-head h2,.learning-work-state-head h3 { margin:0; }
+.learning-work-state>p { margin:10px 0 0; }
+.learning-work-result-list { display:grid; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.learning-work-result-list>span { color:var(--muted); font-size:13px; }
+.learning-work-result-row { display:flex; align-items:baseline; justify-content:space-between; gap:14px; }
+.learning-work-result-row span { color:var(--secondary); font-size:13px; }
+.learning-work-result-row strong,.learning-work-result-list>strong { color:var(--primary); font-size:19px; }
+.learning-work-stages { display:grid; gap:10px; margin-top:22px; }
+.learning-work-stages>h3 { margin:0; font-size:17px; }
+.learning-work-stage { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:14px 0; border-top:1px solid var(--border); scroll-margin-top:24px; }
+.learning-work-stage-copy { display:grid; gap:5px; min-width:0; }
+.learning-work-stage-copy>strong { color:var(--text); }
+.learning-work-stage-copy>p { margin:0; color:var(--secondary); font-size:14px; }
+.learning-work-stage-meta { display:grid; justify-items:end; gap:8px; flex:none; }
+.learning-work-stage-meta>span:not(.status-tag) { color:var(--muted); font-size:12px; }
+@media(max-width:600px) {
+  .discipline-stat { gap:13px; padding:13px; }
+  .discipline-stat-main>.discipline-stat-title,.discipline-stat-copy>.discipline-stat-title { font-size:14px; }
+  .discipline-stat-copy>small { font-size:11px; }
+  .discipline-attention-item>.work-status { margin-left:62px; }
+  .learning-work-stage { display:grid; gap:10px; }
+  .learning-work-stage-meta { display:flex; flex-wrap:wrap; align-items:center; justify-items:start; }
+}
+
+
+/* Показатели дисциплины: сначала название, затем число; пояснение — отдельной строкой. */
+.discipline-page .discipline-stats .discipline-stat-copy {
+  display:flex;
+  flex:1 1 auto;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  gap:7px;
+  min-width:0;
+  line-height:1.35;
+}
+.discipline-page .discipline-stats .discipline-stat-copy > .discipline-stat-main {
+  display:flex !important;
+  flex-direction:row !important;
+  flex-wrap:nowrap !important;
+  align-items:baseline;
+  justify-content:flex-start;
+  gap:11px;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  white-space:nowrap;
+}
+.discipline-page .discipline-stats .discipline-stat-main > .discipline-stat-title {
+  order:0;
+  flex:0 1 auto;
+  min-width:0;
+  color:#35232D;
+  font:700 clamp(19px,1.55vw,22px)/1.2 var(--puls-serif);
+  white-space:nowrap;
+}
+.discipline-page .discipline-stats .discipline-stat-main > .discipline-stat-value {
+  order:1;
+  flex:none;
+  color:#B30842;
+  font:700 clamp(28px,2.05vw,33px)/1 var(--puls-serif);
+}
+.discipline-page .discipline-stats .discipline-stat-copy > .discipline-stat-hint {
+  display:block;
+  max-width:100%;
+  margin:0;
+  color:#705B64;
+  font:500 16px/1.45 Arial,"Helvetica Neue",system-ui,sans-serif;
+  white-space:normal;
+}
+.discipline-stat-copy > .discipline-stat-title {
+  color:#321824;
+  font:700 16px/1.25 Arial,"Helvetica Neue",system-ui,sans-serif;
+  white-space:nowrap;
+}
+.discipline-stat-copy > .discipline-stat-attestation-value {
+  color:#321824;
+  font:700 16px/1.3 Arial,"Helvetica Neue",system-ui,sans-serif;
+}
+
+/* Журнал посещаемости: одна строка на одно занятие. */
+.discipline-attendance-table { min-width:0; }
+.discipline-attendance-table-head,.discipline-attendance-table-row { display:grid; grid-template-columns:minmax(150px,190px) minmax(220px,1fr) minmax(150px,190px); align-items:center; gap:16px; }
+.discipline-attendance-summary-row { display:grid; grid-template-columns:1fr; padding:9px 14px; border-bottom:1px solid #E8D8DE; color:var(--muted); font-size:12px; }
+.discipline-attendance-summary-row [role="cell"] { grid-column:1 / -1; }
+.discipline-attendance-table-head { padding:11px 14px; border-bottom:1px solid #E8D8DE; color:#705B64; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.035em; }
+.discipline-attendance-table-body { display:grid; gap:0; }
+.discipline-attendance-table-row { min-height:58px; padding:10px 14px; border-bottom:1px solid #F0E4E8; color:#38232D; font-size:14px; }
+.discipline-attendance-table-row:last-child { border-bottom:0; }
+.discipline-attendance-lesson { display:grid; gap:3px; min-width:0; }
+.discipline-attendance-lesson strong { overflow-wrap:anywhere; font-weight:600; }
+.discipline-attendance-lesson small { color:var(--muted); font-size:12px; }
+.attendance-status { display:inline-flex; align-items:center; justify-content:center; min-height:28px; width:max-content; max-width:100%; padding:5px 10px; border-radius:7px; font-size:12px; font-weight:700; line-height:1.2; }
+.attendance-status.is-present { color:#176B43; background:#E8F5ED; }
+.attendance-status.is-absent { color:#9C2637; background:#FBEAEC; }
+.attendance-status.is-other { color:#76551B; background:#F7F1E6; }
+.attendance-status.is-unmarked { color:#66545C; background:#F1ECEF; }
+.attendance-status.is-unavailable { color:#8A4C16; background:#FFF1E2; }
+
+/* Нумерованная постраничная навигация работ. */
+.work-pagination { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:10px; margin-top:24px; }
+.work-pagination-current { color:var(--muted); font-size:13px; }
+.catalog-row-copy strong a { color:inherit; text-decoration:none; }
+.catalog-row-lesson { font-weight:600; }
+.catalog-row-lesson a { color:inherit; text-decoration:underline; text-underline-offset:2px; }
+@media(max-width:700px) {
+  .discipline-attendance-table { overflow-x:auto; }
+  .discipline-attendance-table-head,.discipline-attendance-table-row { min-width:640px; }
+  .work-pagination { justify-content:flex-start; }
+}
+
+@media (max-width:600px) {
+  .discipline-page .discipline-stats .discipline-stat-main > .discipline-stat-title {
+    font-size:18px;
+  }
+  .discipline-page .discipline-stats .discipline-stat-main > .discipline-stat-value {
+    font-size:27px;
+  }
+  .discipline-page .discipline-stats .discipline-stat-copy > .discipline-stat-hint {
+    font-size:15px;
+  }
+}
+
+.catalog-row-copy .catalog-row-lesson {
+  color: #705B64;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.catalog-row-copy .catalog-row-lesson a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: #D9BAC5;
+  text-underline-offset: 2px;
+}
+
+.catalog-row-copy .catalog-row-lesson a:hover {
+  color: #A31C49;
 }

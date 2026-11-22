@@ -58,6 +58,24 @@ describe("восстановление доставки без потери ло
     expect((await admin.requestExternalOperation.findMany({ where: { requestId: created.id } }))).toHaveLength(1);
   });
 
+  it("после пяти неудачных доставок заявка получает окончательную техническую ошибку без шестой попытки", async () => {
+    const created = await createRequest();
+    const operation = await admin.requestExternalOperation.findFirstOrThrow({ where: { requestId: created.id } });
+    await mode("unavailable", async () => {
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        await administrationTick();
+        const current = await admin.requestExternalOperation.findUniqueOrThrow({ where: { operationId: operation.operationId } });
+        expect(current.externalStateCode).toBe(attempt === 5 ? "PERMANENT_TECHNICAL_ERROR" : "RETRYABLE_ERROR");
+        if (attempt < 5) await admin.requestExternalOperation.update({ where: { operationId: operation.operationId }, data: { nextAttemptAt: due } });
+      }
+      await administrationTick();
+    });
+    const attempts = await admin.requestExternalAttempt.findMany({ where: { operationId: operation.operationId }, orderBy: { attemptNumber: "asc" } });
+    expect(attempts.map(item => item.attemptNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect(attempts.every(item => item.outcomeCode === "RETRYABLE_ERROR")).toBe(true);
+    expect((await new OperationsService(account).request(created.id)).businessStatus).toBeNull();
+  });
+
   it("активная lease препятствует второму обработчику захватить операцию", async () => {
     const created = await createRequest();
     const operation = await admin.requestExternalOperation.findFirstOrThrow({ where: { requestId: created.id } });
@@ -85,6 +103,26 @@ describe("восстановление доставки без потери ло
     expect(messages.find(item => item.messageId === first.id)?.deliveryState).toBe("ACKNOWLEDGED");
     expect(messages.find(item => item.messageId === second.id)?.deliveryState).toBe("ACKNOWLEDGED");
     expect(messages.find(item => item.messageId === first.id)!.sequenceNumber).toBeLessThan(messages.find(item => item.messageId === second.id)!.sequenceNumber);
+  });
+
+  it("сообщение после пяти неудачных передач не повторяется бесконечно и не получает ложное подтверждение", async () => {
+    const service = new OperationsService(account);
+    const appeal = await service.createAppeal({ categoryCode: "QUESTION", subject: "Лимит доставки", firstMessage: "Проверка ограничения попыток доставки." }, randomUUID());
+    await administrationTick();
+    const message = await service.sendMessage(appeal.id, { body: "Сообщение с недоступным тестовым источником." }, randomUUID());
+    const operation = await admin.messageDeliveryOperation.findFirstOrThrow({ where: { messageId: message.id } });
+    await mode("unavailable", async () => {
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        await administrationTick();
+        const current = await admin.messageDeliveryOperation.findUniqueOrThrow({ where: { deliveryOperationId: operation.deliveryOperationId } });
+        expect(current.deliveryStateCode).toBe(attempt === 5 ? "PERMANENT_TECHNICAL_ERROR" : "RETRYABLE_ERROR");
+        if (attempt < 5) await admin.messageDeliveryOperation.update({ where: { deliveryOperationId: operation.deliveryOperationId }, data: { nextAttemptAt: due } });
+      }
+      await administrationTick();
+    });
+    const attempts = await admin.messageDeliveryAttempt.findMany({ where: { messageId: message.id }, orderBy: { attemptNumber: "asc" } });
+    expect(attempts.map(item => item.attemptNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect((await service.messages(appeal.id)).find(item => item.messageId === message.id)?.deliveryState).toBe("PERMANENT_TECHNICAL_ERROR");
   });
 
   it("дублированный ответ источника сохраняется в переписке ровно один раз", async () => {

@@ -6,21 +6,32 @@ import { useRemote } from "@/shared/api/use-remote";
 import * as dto from "@/shared/contracts/student-api";
 import { RemoteState } from "@/shared/ui/remote-state";
 import { PagedList } from "@/shared/ui/paged-list";
-import { MaterialCards, ProgressFacts, academicDate, assessmentValue, dataStateText, targetHref } from "@/shared/ui/academic";
+import { MaterialCards, academicDate, assessmentValue, dataStateText, targetHref } from "@/shared/ui/academic";
 import { Button } from "@/shared/ui/button";
 import { PageHero } from "@/shared/ui/page-hero";
 import { ScheduleCard } from "@/shared/ui/schedule-card";
 import { DisciplineMaterials, DisciplineOverview, DisciplinePerformance } from "./discipline-content";
 import { OfferingTabs } from "./offering-tabs";
+import { WorkStatusBadge } from "./work-status-badge";
 
 export function WorkCard({ work, detailed = false }: { work: dto.WorkSummary; detailed?: boolean }) {
-  const status = work.progress?.reviewStatusCode ?? work.progress?.submissionStatusCode ?? work.progress?.completionStatusCode ?? work.progress?.assignmentStatusCode;
-  return <article className="surface work-card"><span className="status-tag">{work.workTypeLabel}</span><h3><Link href={targetHref(work.target)} prefetch={false}>{work.title}</Link></h3><div className="work-card-facts"><span>{work.due ? `Срок: ${academicDate(work.due)}` : "Срок не указан"}</span>{!detailed && <span>{status ?? (work.progress?.dataState === "SOURCE_ERROR" ? "Источник недоступен" : "Состояние не указано")}</span>}</div>{detailed && <><div className="work-card-stages"><span><small>Передача</small>{work.progress?.submissionStatusCode ?? (work.progress?.dataState === "SOURCE_ERROR" ? "Источник недоступен" : "Не указана")}</span><span><small>Проверка</small>{work.progress?.reviewStatusCode ?? (work.progress?.dataState === "SOURCE_ERROR" ? "Источник недоступен" : "Не указана")}</span></div><Link className="work-card-open" href={targetHref(work.target)} prefetch={false}>Открыть работу →</Link></>}</article>;
+  return <article className="surface work-card">
+    <div className="work-card-top">
+      <span className="status-tag">{work.workTypeLabel}</span>
+      <WorkStatusBadge progress={work.progress} publishedResult={work.publishedResult} />
+    </div>
+    <h3>{detailed ? work.title : <Link href={targetHref(work.target)} prefetch={false}>{work.title}</Link>}</h3>
+    {(work.due || work.publishedResult) && <div className="work-card-facts">
+      {work.due && <span>Срок сдачи: {academicDate(work.due)}</span>}
+      {work.publishedResult && <span>Результат: {assessmentValue(work.publishedResult.value)}</span>}
+    </div>}
+    {detailed && <Link className="work-card-open" href={targetHref(work.target)} prefetch={false}>Открыть работу →</Link>}
+  </article>;
 }
 export function ResultsSection({ value }: { value: dto.ResultsView }) {
   return <div className="learning-sections learning-performance"><section className="surface"><h2>Текущий контроль</h2>{value.gradingModelLabel && <p className="muted">{value.gradingModelLabel}</p>}{value.components.length ? <div className="result-table" role="table" aria-label="Оценочные компоненты"><div role="row" className="result-row table-head"><span role="columnheader">Компонент</span><span role="columnheader">Результат</span><span role="columnheader">Шкала</span></div>{value.components.map(c => <div role="row" className="result-row" key={c.componentId}><span role="cell">{c.label}</span><strong role="cell">{c.value ? assessmentValue(c.value) : dataStateText(c.state)}</strong><span role="cell">{c.maxValue != null ? `Максимум ${c.maxValue}` : "Не указана"}{c.weightText ? ` · Вес: ${c.weightText}` : ""}</span></div>)}</div> : <p className="muted">{value.gradingState === "NOT_APPLICABLE" ? "Баллы по этой дисциплине не предусмотрены." : dataStateText(value.componentsState.dataState)}</p>}</section><section className="surface learning-performance-final"><h2>Аттестация и официальный итог</h2><div className="learning-performance-final-grid"><div><h3>Аттестация</h3>{value.attestations.length ? value.attestations.map(a => <div className="attestation-card" key={a.attestationId}><h4>{a.kindLabel}</h4><p>{a.planned ? academicDate(a.planned) : "Дата не указана"}</p>{a.location && <p className="muted">{a.location}</p>}</div>) : <p>{dataStateText(value.attestationsState.dataState)}</p>}</div><div><h3>Официальный итог</h3><p className="result-value">{value.officialResult?.value ? assessmentValue(value.officialResult.value) : dataStateText(value.officialResultState)}</p>{value.officialResult?.assessedAt && <p className="muted small">Дата результата: {new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Omsk", dateStyle: "long" }).format(new Date(value.officialResult.assessedAt))}</p>}</div></div></section></div>;
 }
-const eventLabels = { ISSUED: "Выдано", DUE: "Срок", COMPLETED: "Выполнено", SUBMITTED: "Передано на проверку", ASSESSED: "Оценено", REVIEWED: "Проверено", ACTUAL: "Подтверждено проведение", ATTESTATION: "Аттестация", PLANNED: "По расписанию" };
+const eventLabels = { ISSUED: "Выдано", DUE: "Срок", COMPLETED: "Выполнено", SUBMITTED: "Сдана на проверку", ASSESSED: "Оценено", REVIEWED: "Проверено", ACTUAL: "Подтверждено проведение", ATTESTATION: "Аттестация", PLANNED: "По расписанию" };
 export function TimelineCard({ item }: { item: dto.TimelineEntry }) { return <article className="timeline-card"><span className="timeline-date">{item.when ? academicDate(item.when) : "Дата не указана"}</span><div><span className="status-tag">{eventLabels[item.eventKind]}</span><h3><Link href={targetHref(item.target)} prefetch={false}>{item.title}</Link></h3>{item.resultState && <p>{item.value ? assessmentValue(item.value) : dataStateText(item.resultState)}</p>}</div></article>; }
 export function OfferingScreen({ periodId, offeringId }: { periodId: string; offeringId: string }) {
   const params = useSearchParams(), base = `/periods/${periodId}/offerings/${offeringId}`, pageBase = `/study/${periodId}/${offeringId}`;
@@ -44,20 +55,73 @@ export function WorkScreen({ periodId, contextId, workId, unit = false }: { peri
   const { state, reload } = useRemote(`${base}/works/${workId}${stageRef ? `?stageRef=${encodeURIComponent(stageRef)}` : ""}`, dto.WorkDetailResponseSchema), stageFocused = useRef<string | null>(null);
   useEffect(() => { if (state.kind === "ready" && state.value.data.focusStageId && stageFocused.current !== state.value.data.focusStageId) { const element = document.getElementById(state.value.data.focusStageId); element?.focus(); element?.scrollIntoView(); stageFocused.current = state.value.data.focusStageId; } }, [state]);
   if (state.kind !== "ready") return <main id="main" className="workspace"><h1>Учебная работа</h1><RemoteState state={state} retry={reload} /></main>;
-  const detail = state.value.data, progress = detail.progress;
+  const detail = state.value.data;
+  const resultFallback = detail.resultsState.dataState === "SOURCE_ERROR"
+    ? "Не удалось получить результат."
+    : detail.resultsState.dataState === "NOT_APPLICABLE"
+      ? "Оценка не предусмотрена."
+      : detail.work.publishedResult === null ? "Результат пока не опубликован." : "Результат уточняется.";
+  const summaryAlreadyShown = detail.work.publishedResult && detail.results.some(result =>
+    assessmentValue(result.value) === assessmentValue(detail.work.publishedResult!.value)
+    && (!detail.work.publishedResult!.assessedAt || result.assessedAt === detail.work.publishedResult!.assessedAt),
+  );
+  const showSummaryResult = !!detail.work.publishedResult && !summaryAlreadyShown;
   return <main id="main" className="workspace learning-r9-main">
-    <PageHero eyebrow={detail.work.workTypeLabel} title={detail.work.title} description={detail.work.due ? `Срок выполнения: ${academicDate(detail.work.due)}. Подробности задания, этапы и результат — ниже.` : "Подробности задания, этапы выполнения и результат."} image={detail.stages.length ? "course-project.jpg" : "work-notes.jpg"}/>
-    {state.value.meta.sourceStatus === "PARTIAL" && <p className="notice notice-warning">Часть сведений недоступна. Неизвестные статусы не означают невыполнение.</p>}
+    <PageHero eyebrow={detail.work.workTypeLabel} title={detail.work.title} description={detail.stages.length ? "Описание задания и его этапы." : "Описание задания и результат."} image={detail.stages.length ? "course-project.jpg" : "work-notes.jpg"}/>
+    {state.value.meta.sourceStatus === "PARTIAL" && <p className="notice notice-warning">Часть сведений не удалось загрузить. Неизвестный статус не означает, что работа не выполнена.</p>}
     <div className="learning-sections learning-work-layout">
-      {(detail.description || detail.topic) && <section className="surface learning-work-wide"><h2>Задание</h2>{detail.topic && <h3>{detail.topic}</h3>}{detail.description && <p className="plain-text">{detail.description}</p>}</section>}
-      <section className="surface"><h2>Сроки и история</h2><dl className="data-list"><div><dt>Выдано</dt><dd>{academicDate(detail.work.issued)}</dd></div><div><dt>Срок</dt><dd>{detail.work.due ? academicDate(detail.work.due) : "Срок не указан"}</dd></div>{[["Выполнено", progress.completedAt], ["Передано на проверку", progress.submittedAt], ["Проверено", progress.reviewedAt]].map(([label, at]) => at ? <div key={label}><dt>{label}</dt><dd>{moment(at)}</dd></div> : null)}</dl></section>
-      <section className="surface"><h2>Выполнение и проверка</h2><ProgressFacts progress={progress} /></section>
-      <section className="surface learning-work-wide"><h2>Результат</h2>{detail.results.length ? detail.results.map(r => <div key={r.resultId}><p className="result-value">{assessmentValue(r.value)}</p>{r.assessedAt && <p className="muted small">Оценено: {moment(r.assessedAt)}</p>}</div>) : <p>{dataStateText(detail.resultsState.dataState)}</p>}</section>
-      <section className="learning-work-wide"><h2>Этапы</h2>{detail.stages.length ? detail.stages.map(stage => <section className="surface stage-card" key={stage.stageId} id={stage.stageId} tabIndex={-1}><h3>{stage.title}</h3>{stage.description && <p>{stage.description}</p>}<p className="muted">Срок: {academicDate(stage.due)}</p><ProgressFacts progress={stage.progress ?? { dataState: "UNKNOWN" }} /></section>) : <p className="notice">{detail.stagesState.dataState === "SOURCE_ERROR" ? "Сведения об этапах временно недоступны" : "Сведения об этапах пока не указаны."}</p>}</section>
-      <section className="learning-work-wide"><h2>Связанные материалы</h2>{detail.relatedMaterials.length ? <MaterialCards items={detail.relatedMaterials} /> : <p className="notice">{dataStateText(detail.materialsState.dataState)}</p>}</section>
-    </div><Button asChild variant="secondary"><Link href={unit ? `/study/${periodId}/units/${contextId}` : `/study/${periodId}/${contextId}?tab=works`}>Вернуться к работам</Link></Button>
+      {(detail.description || detail.topic || detail.stages.length || detail.stagesState.isComplete !== true) && <section className="surface learning-work-wide learning-work-assignment">
+        <h2>Задание</h2>
+        {detail.topic && <h3>{detail.topic}</h3>}
+        {detail.description && <p className="plain-text">{detail.description}</p>}
+        {detail.stages.length > 0 && <div className="learning-work-stages">
+          <h3>Этапы</h3>
+          {detail.stages.map(stage => {
+            const stageResult = detail.results.find(result => result.stageId === stage.stageId);
+            const publishedStageResult = stageResult
+              ? { value: stageResult.value, ...(stageResult.assessedAt ? { assessedAt: stageResult.assessedAt } : {}) }
+              : detail.resultsState.isComplete === true ? null : undefined;
+            return <article className="learning-work-stage" key={stage.stageId} id={stage.stageId} tabIndex={-1}>
+              <div className="learning-work-stage-copy">
+                <strong>{stage.title}</strong>
+                {stage.description && <p>{stage.description}</p>}
+              </div>
+              <div className="learning-work-stage-meta">
+                {stage.due && <span>Срок сдачи: {academicDate(stage.due)}</span>}
+                <WorkStatusBadge progress={stage.progress ?? { dataState: "UNKNOWN" }} publishedResult={publishedStageResult} />
+              </div>
+            </article>;
+          })}
+        </div>}
+        {!detail.stages.length && detail.stagesState.isComplete !== true && <p className="notice">Этапы пока не удалось загрузить.</p>}
+      </section>}
+      <section className="surface learning-work-state">
+        <div className="learning-work-state-head"><h2>Состояние работы</h2><WorkStatusBadge progress={detail.progress} publishedResult={detail.work.publishedResult} /></div>
+        {detail.work.due && <p className="muted">Срок сдачи: {academicDate(detail.work.due)}</p>}
+        <div className="learning-work-result-list">
+          <span>Результат</span>
+          {detail.results.length || showSummaryResult
+            ? <>
+              {detail.results.map(result => {
+                const stage = detail.stages.find(item => item.stageId === result.stageId);
+                return <div className="learning-work-result-row" key={result.resultId}>
+                  <span>{stage?.title ?? "Итог работы"}</span>
+                  <strong>{assessmentValue(result.value)}</strong>
+                </div>;
+              })}
+              {showSummaryResult && <div className="learning-work-result-row"><span>Итог работы</span><strong>{assessmentValue(detail.work.publishedResult!.value)}</strong></div>}
+            </>
+            : <strong>{resultFallback}</strong>}
+        </div>
+      </section>
+      <section className="learning-work-wide"><h2>Связанные материалы</h2>{detail.relatedMaterials.length
+        ? <MaterialCards items={detail.relatedMaterials} />
+        : <p className="notice">{detail.materialsState.isComplete === true ? "Связанных материалов нет." : "Не удалось загрузить связанные материалы."}</p>}</section>
+    </div>
+    <Button asChild variant="secondary"><Link href={unit ? `/study/${periodId}/units/${contextId}` : `/study/${periodId}/${contextId}?tab=works`}>Вернуться к работам</Link></Button>
   </main>;
 }
+
 export function UnitScreen({ periodId, unitId }: { periodId: string; unitId: string }) {
   const { state, reload } = useRemote(`/periods/${periodId}/academic-units/${unitId}`, dto.UnitDetailResponseSchema);
   if (state.kind !== "ready") return <main id="main" className="workspace"><h1>Учебная единица</h1><RemoteState state={state} retry={reload} /></main>;

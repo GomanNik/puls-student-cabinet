@@ -21,11 +21,11 @@ const implemented = routes(root).filter(file => !file.includes("[...path]")).fla
   return methods.filter(method => new RegExp(`export (?:const |(?:async )?function )${method.toUpperCase()}\\b`).test(source)).map(method => `${method.toUpperCase()} ${route}`);
 });
 
-describe("49 операций OpenAPI 3.1 и маршруты приложения", () => {
+describe("50 операций OpenAPI 3.1 и маршруты приложения", () => {
   it("каждой документированной операции соответствует ровно один Route Handler", () => {
     expect(contract.openapi).toBe("3.1.0");
     expect(contract.servers.map(server => server.url)).toContain("/api/v1");
-    expect(documented).toHaveLength(49);
+    expect(documented).toHaveLength(50);
     expect(new Set(documented.map(item => item.key)).size).toBe(documented.length);
     expect(implemented.sort()).toEqual(documented.map(item => item.key).sort());
   });

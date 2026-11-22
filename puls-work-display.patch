@@ -1,0 +1,763 @@
+diff --git a/src/modules/learning/work-status.ts b/src/modules/learning/work-status.ts
+new file mode 100644
+--- /dev/null
++++ b/src/modules/learning/work-status.ts
+@@ -0,0 +1,103 @@
++import type { DataState, PublishedWorkResult, WorkProgress } from "@/shared/contracts/student-api";
++
++export type WorkStatus =
++  | "NOT_STARTED"
++  | "IN_PROGRESS"
++  | "NOT_SUBMITTED"
++  | "NOT_COMPLETED"
++  | "COMPLETED"
++  | "AWAITING_REVIEW"
++  | "REVIEWED"
++  | "RESULT_PUBLISHED"
++  | "NEEDS_REVISION"
++  | "NO_ACTIVITY"
++  | "UNCERTAIN"
++  | "UNAVAILABLE"
++  | "NOT_APPLICABLE";
++
++export type WorkProgressLike = Partial<Pick<
++  WorkProgress,
++  | "assignmentStatusCode"
++  | "completionStatusCode"
++  | "submissionStatusCode"
++  | "reviewStatusCode"
++  | "completedAt"
++  | "submittedAt"
++  | "reviewedAt"
++>> & { dataState?: DataState };
++
++function normalize(value?: string) {
++  return (value ?? "").normalize("NFKC").toLocaleLowerCase("ru-RU").replaceAll("ё", "е").trim();
++}
++
++function isReturnedForRevision(progress?: WorkProgressLike) {
++  return /доработ|возвращ|вернул|исправ|revision|returned/u.test(normalize(progress?.reviewStatusCode));
++}
++
++function isReviewed(progress?: WorkProgressLike) {
++  const review = normalize(progress?.reviewStatusCode);
++  if (/не проверен|не оценен|не принят|не зачтен/u.test(review)) return false;
++  return Boolean(progress?.reviewedAt)
++    || /проверен|оценен|принят|зачтен|reviewed|graded|approved/u.test(review);
++}
++
++export function isReviewCandidate(progress?: WorkProgressLike) {
++  const submission = normalize(progress?.submissionStatusCode);
++  if (/не отправ|не сдан|не передан|не представ/u.test(submission)) return false;
++  const review = normalize(progress?.reviewStatusCode);
++  const submitted = Boolean(progress?.submittedAt)
++    || /передан|отправлен|сдан|на проверк|submitted|turned in|sent/u.test(submission)
++    || /на проверк|ожидает проверки|pending review/u.test(review);
++
++  return submitted && !isReviewed(progress) && !isReturnedForRevision(progress);
++}
++
++export function isAwaitingReview(
++  progress: WorkProgressLike | undefined,
++  publishedResult: PublishedWorkResult | null | undefined,
++) {
++  return isReviewCandidate(progress) && publishedResult === null;
++}
++
++export function getWorkStatus(
++  progress: WorkProgressLike | undefined,
++  publishedResult: PublishedWorkResult | null | undefined,
++): WorkStatus {
++  if (isReturnedForRevision(progress)) return "NEEDS_REVISION";
++  if (publishedResult) return "RESULT_PUBLISHED";
++  if (isReviewed(progress)) return "REVIEWED";
++  if (progress?.dataState === "SOURCE_ERROR" || progress?.dataState === "FORBIDDEN") return "UNAVAILABLE";
++  if (!progress) return "NO_ACTIVITY";
++  if (progress.dataState === "NOT_APPLICABLE") return "NOT_APPLICABLE";
++  if (isReviewCandidate(progress)) return publishedResult === null ? "AWAITING_REVIEW" : "UNCERTAIN";
++
++  const assignment = normalize(progress.assignmentStatusCode);
++  const completion = normalize(progress.completionStatusCode);
++  const submission = normalize(progress.submissionStatusCode);
++
++  if (/не отправ|не сдан|не передан|не представ/u.test(submission)) return "NOT_SUBMITTED";
++  if (/не выполн|не заверш|not completed/u.test(completion)) return "NOT_COMPLETED";
++  if (progress.completedAt || /выполн|заверш|completed|finished/u.test(completion)) return "COMPLETED";
++  if (/в работе|начат|выполня|in progress|started/u.test(`${completion} ${assignment}`)) return "IN_PROGRESS";
++  if (/выдан|назначен|assigned/u.test(assignment)) return "NOT_STARTED";
++
++  return "NO_ACTIVITY";
++}
++
++export function workStatusLabel(status: WorkStatus) {
++  return ({
++    NOT_STARTED: "Не начата",
++    IN_PROGRESS: "В работе",
++    NOT_SUBMITTED: "Не сдана",
++    NOT_COMPLETED: "Не выполнена",
++    COMPLETED: "Выполнена",
++    AWAITING_REVIEW: "На проверке",
++    REVIEWED: "Проверена",
++    RESULT_PUBLISHED: "Результат опубликован",
++    NEEDS_REVISION: "Нужна доработка",
++    NO_ACTIVITY: "Пока без отметок",
++    UNCERTAIN: "Статус уточняется",
++    UNAVAILABLE: "Статус недоступен",
++    NOT_APPLICABLE: "Не требуется",
++  })[status];
++}
+diff --git a/src/modules/learning/work-status-badge.tsx b/src/modules/learning/work-status-badge.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/modules/learning/work-status-badge.tsx
+@@ -0,0 +1,17 @@
++import type { PublishedWorkResult, WorkProgress } from "@/shared/contracts/student-api";
++import { getWorkStatus, workStatusLabel } from "./work-status";
++
++export function WorkStatusBadge({
++  progress,
++  publishedResult,
++}: {
++  progress?: WorkProgress;
++  publishedResult?: PublishedWorkResult | null;
++}) {
++  const status = getWorkStatus(progress, publishedResult);
++  return (
++    <span className={`status-tag work-status work-status--${status.toLowerCase()}`}>
++      {workStatusLabel(status)}
++    </span>
++  );
++}
+diff --git a/src/shared/contracts/student-api.ts b/src/shared/contracts/student-api.ts
+--- a/src/shared/contracts/student-api.ts
++++ b/src/shared/contracts/student-api.ts
+@@ -89,4 +89,7 @@ export const WorkResultSchema = z.strictObject({"resultId":z.string().min(1).max
+ export type WorkResult = z.infer<typeof WorkResultSchema>;
+ 
+-export const WorkSummarySchema = z.strictObject({"workId":z.string().min(1).max(240),"periodId":z.string().min(1).max(240),"offeringId":z.string().min(1).max(240).optional(),"unitId":z.string().min(1).max(240).optional(),"title":z.string().min(1),"workTypeLabel":z.string().min(1),"issued":AcademicDateSchema.optional(),"due":AcademicDateSchema.optional(),"progress":WorkProgressSchema.optional(),"target":TargetSchema}).refine(value => [z.looseObject({}).refine(value => ["offeringId"].every(key => Object.hasOwn(value, key)), "Отсутствует обязательное поле").refine(value => !z.looseObject({}).refine(value => ["unitId"].every(key => Object.hasOwn(value, key)), "Отсутствует обязательное поле").safeParse(value).success),z.looseObject({}).refine(value => ["unitId"].every(key => Object.hasOwn(value, key)), "Отсутствует обязательное поле").refine(value => !z.looseObject({}).refine(value => ["offeringId"].every(key => Object.hasOwn(value, key)), "Отсутствует обязательное поле").safeParse(value).success)].filter(schema => schema.safeParse(value).success).length === 1, "Нарушен вариант DTO");
++export const PublishedWorkResultSchema = z.strictObject({"value":AssessmentValueSchema,"assessedAt":z.string().datetime({offset:true}).optional()});
++export type PublishedWorkResult = z.infer<typeof PublishedWorkResultSchema>;
++
++export const WorkSummarySchema = z.strictObject({"workId":z.string().min(1).max(240),"periodId":z.string().min(1).max(240),"offeringId":z.string().min(1).max(240).optional(),"unitId":z.string().min(1).max(240).optional(),"title":z.string().min(1),"workTypeLabel":z.string().min(1),"issued":AcademicDateSchema.optional(),"due":AcademicDateSchema.optional(),"progress":WorkProgressSchema.optional(),"publishedResult":z.union([PublishedWorkResultSchema,z.null()]).optional(),"target":TargetSchema}).refine(value => [z.looseObject({}).refine(value => ["offeringId"].every(key => Object.hasOwn(value, key)), "Отсутствует обязательное поле").refine(value => !z.looseObject({}).refine(value => ["unitId"].every(key => Object.hasOwn(value, key)), "Отсутствует обязательное поле").safeParse(value).success),z.looseObject({}).refine(value => ["unitId"].every(key => Object.hasOwn(value, key)), "Отсутствует обязательное поле").refine(value => !z.looseObject({}).refine(value => ["offeringId"].every(key => Object.hasOwn(value, key)), "Отсутствует обязательное поле").safeParse(value).success)].filter(schema => schema.safeParse(value).success).length === 1, "Нарушен вариант DTO");
+ export type WorkSummary = z.infer<typeof WorkSummarySchema>;
+@@ -113,4 +116,7 @@ export const TimelineEntrySchema = z.strictObject({"timelineKey":z.string().min
+ export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
+ 
+-export const OfferingDetailSchema = z.strictObject({"offering":OfferingSummarySchema,"sessions":z.array(ScheduleDetailSchema),"sessionsState":ListStatusSchema,"works":z.array(WorkSummarySchema),"worksState":ListStatusSchema,"results":ResultsViewSchema,"materials":z.array(MaterialSchema),"materialsState":ListStatusSchema,"progressLines":z.strictObject({"activity":DataStateSchema,"completion":DataStateSchema,"results":DataStateSchema})});
++export const WorkCountsSchema = z.strictObject({"total":z.union([z.number().int().min(0),z.null()]),"reviewed":z.union([z.number().int().min(0),z.null()]),"awaitingReview":z.union([z.number().int().min(0),z.null()])});
++export type WorkCounts = z.infer<typeof WorkCountsSchema>;
++
++export const OfferingDetailSchema = z.strictObject({"offering":OfferingSummarySchema,"sessions":z.array(ScheduleDetailSchema),"sessionsState":ListStatusSchema,"works":z.array(WorkSummarySchema),"worksState":ListStatusSchema,"workCounts":WorkCountsSchema,"results":ResultsViewSchema,"materials":z.array(MaterialSchema),"materialsState":ListStatusSchema,"progressLines":z.strictObject({"activity":DataStateSchema,"completion":DataStateSchema,"results":DataStateSchema})});
+ export type OfferingDetail = z.infer<typeof OfferingDetailSchema>;
+diff --git a/src/modules/learning/service.ts b/src/modules/learning/service.ts
+--- a/src/modules/learning/service.ts
++++ b/src/modules/learning/service.ts
+@@ -1,14 +1,15 @@
+ import "server-only";
+ import type { AcademicPeriod, AcademicUnit, AcademicWork, ExternalRef, WorkProgress as SourceProgress, Material as SourceMaterial, SourceAvailability, RequestedScope, AssessmentValue as SourceValue } from "@/server/integrations/contracts";
+ import type { LearningPort, SourceLearningScope } from "@/server/integrations/learning-port";
+ import { StudentAcademicContext, audienceAllowed } from "@/modules/student-context/scope";
+-import type { AcademicDate, AssessmentValue, DataState, IndependentUnitSummary, ListStatus, Material, OfferingDetail, PartialError, ResponseMeta, ResultsView, Stage, TimelineEntry, WorkDetail, WorkProgress, WorkSummary } from "@/shared/contracts/student-api";
++import type { AcademicDate, AssessmentValue, DataState, IndependentUnitSummary, ListStatus, Material, OfferingDetail, PartialError, PublishedWorkResult, ResponseMeta, ResultsView, Stage, TimelineEntry, WorkCounts, WorkDetail, WorkProgress, WorkSummary } from "@/shared/contracts/student-api";
+ import { pageSlice } from "@/shared/server/references";
+ import { notFound } from "@/shared/server/route";
+ import { AppError } from "@/shared/server/errors";
+ import { ScheduleService } from "@/modules/schedule/service";
+ import { localDay } from "@/shared/lib/dates";
+ import type { AcademicSearchResult, Target } from "@/shared/contracts/student-api";
+ 
+ import { securityAudit } from "@/shared/server/security-audit";
+ import type { GradeRow } from "./grades-contract";
++import { getWorkStatus, isAwaitingReview, isReviewCandidate } from "./work-status";
+@@ -106,17 +107,53 @@ export class LearningService {
+-  workSummary(binding: LearningBinding, raw: AcademicWork, progress?: SourceProgress, progressState?: DataState): WorkSummary {
++  workSummary(binding: LearningBinding, raw: AcademicWork, progress?: SourceProgress, progressState?: DataState, publishedResult?: PublishedWorkResult | null): WorkSummary {
+     const id = this.id(binding, "work", raw.workId);
+     return { workId: id, periodId: binding.publicPeriod, ...(binding.kind === "OFFERING" ? { offeringId: binding.publicContext } : { unitId: binding.publicContext }), title: raw.title,
+-      workTypeLabel: raw.workTypeLabel, ...(raw.issued ? { issued: raw.issued } : {}), ...(raw.due ? { due: raw.due } : {}), progress: progress ? this.progress(progress) : progressState === "SOURCE_ERROR" ? { dataState: "SOURCE_ERROR" } : unknownProgress(), target: { kind: "WORK", targetRef: id } };
++      workTypeLabel: raw.workTypeLabel, ...(raw.issued ? { issued: raw.issued } : {}), ...(raw.due ? { due: raw.due } : {}), progress: progress ? this.progress(progress) : progressState === "SOURCE_ERROR" ? { dataState: "SOURCE_ERROR" } : unknownProgress(),
++      ...(publishedResult !== undefined ? { publishedResult } : {}), target: { kind: "WORK", targetRef: id } };
++  }
++  private async workResultSummaries(binding: LearningBinding, candidates: AcademicWork[]) {
++    const byWork = new Map<string, PublishedWorkResult | null>(), slices: Slice<unknown>[] = [];
++    for (let offset = 0; offset < candidates.length; offset += 4) {
++      const batch = await Promise.all(candidates.slice(offset, offset + 4).map(async work => {
++        const read = await this.read(binding, () => this.port.getWorkResults(binding.source, work.workId), "ASSESSMENT",
++          result => result.workId === work.workId && result.externalStudentId === this.context.identity.externalStudentId);
++        const latest = read.items.slice().sort((a, b) => (b.assessedAt ?? "").localeCompare(a.assessedAt ?? ""))[0];
++        const publishedResult: PublishedWorkResult | null | undefined = latest
++          ? { value: this.value(latest.value), ...(latest.assessedAt ? { assessedAt: latest.assessedAt } : {}) }
++          : read.complete === true ? null : undefined;
++        return { work, read, publishedResult };
++      }));
++      for (const item of batch) {
++        if (item.publishedResult !== undefined) byWork.set(item.work.workId, item.publishedResult);
++        slices.push(item.read);
++      }
++    }
++    return { byWork, slices };
+   }
+   async listWorks(binding: LearningBinding, limit: number, cursor?: string, selection?: WorkSelection) {
+     const slice = await this.works(binding);
+     if (slice.state === "SOURCE_ERROR") throw new AppError(503, "EXTERNAL_UNAVAILABLE", "Источник работ временно недоступен.");
+     const progress = await this.progressSlice(binding, slice.items);
+-    const results: Slice<unknown>[] = [], resultIds = new Set<string>();
+-    if (selection?.filter === "RESULT") for (const work of slice.items) {
+-      const read = await this.read(binding, () => this.port.getWorkResults(binding.source, work.workId), "ASSESSMENT", r => r.workId === work.workId && r.externalStudentId === this.context.identity.externalStudentId);
+-      results.push(read); if (read.items.length) resultIds.add(work.workId);
+-    }
++    const progressByWork = new Map(progress.items.map(item => [item.workId, item]));
++    const resultCandidates = selection?.filter === "RESULT"
++      ? slice.items
++      : slice.items.filter(work => isReviewCandidate(progressByWork.get(work.workId)));
++    const publishedResults = await this.workResultSummaries(binding, resultCandidates);
++    const linkedResults = binding.kind === "OFFERING" ? await this.results(binding) : undefined;
++    const publishedByWork = new Map(publishedResults.byWork);
++    if (linkedResults) {
++      for (const work of slice.items) {
++        const linked = linkedResults.data.components.find(component => component.linkedWorkId === this.id(binding, "work", work.workId) && component.value);
++        if (linked?.value && !publishedByWork.get(work.workId)) {
++          publishedByWork.set(work.workId, { value: linked.value, ...(linked.assessedAt ? { assessedAt: linked.assessedAt } : {}) });
++        }
++      }
++    }
+     const normalized = selection?.query.normalize("NFKC").toLocaleLowerCase("ru-RU").trim();
+-    const items = slice.items.filter(w => (!normalized || w.title.normalize("NFKC").toLocaleLowerCase("ru-RU").includes(normalized)) && (selection?.filter !== "DUE" || !!w.due) && (selection?.filter !== "RESULT" || resultIds.has(w.workId)) && (selection?.filter !== "REVIEW" || !!progress.items.find(p => p.workId === w.workId && p.submittedAt && !p.reviewedAt && !p.reviewStatusCode)))
+-      .map(w => this.workSummary(binding, w, progress.items.find(p => p.workId === w.workId), progress.state));
++    const items = slice.items.filter(work => {
++      const progressItem = progressByWork.get(work.workId);
++      const publishedResult = publishedByWork.get(work.workId);
++      return (!normalized || work.title.normalize("NFKC").toLocaleLowerCase("ru-RU").includes(normalized))
++        && (selection?.filter !== "DUE" || !!work.due)
++        && (selection?.filter !== "RESULT" || publishedResult != null)
++        && (selection?.filter !== "REVIEW" || isAwaitingReview(progressItem, publishedResult));
++    }).map(work => this.workSummary(binding, work, progressByWork.get(work.workId), progress.state, publishedByWork.get(work.workId)));
+@@ -129,3 +166,3 @@ export class LearningService {
+-    const meta = this.meta([slice, progress, ...results]);
++    const meta = this.meta([slice, progress, ...publishedResults.slices, ...(linkedResults?.slices ?? [])]);
+     return { data: { ...pageSlice(items, this.context.auth.accountId, selection ? ["works-selection", binding.publicPeriod, binding.publicContext, selection.filter, selection.sort, normalized, limit] : ["works", binding.publicPeriod, binding.publicContext, limit], this.context.revision, limit, cursor), isComplete: meta.completeness ?? null, dataState: items.length ? "READY" as const : meta.completeness ? "EMPTY_CONFIRMED" as const : "UNKNOWN" as const }, meta };
+   }
+@@ -162,6 +199,7 @@ export class LearningService {
+-    const [progress, stages, stageProgress, results, materials] = await Promise.all([
++    const [progress, stages, stageProgress, results, materials, linkedResults] = await Promise.all([
+       this.progressSlice(binding, works.items),
+       this.read(binding, () => this.port.getStages(binding.source, work.workId), "STAGE", s => s.workId === work.workId),
+       this.read(binding, () => this.port.getStageProgress(binding.source, work.workId), "STAGE", p => p.externalStudentId === this.context.identity.externalStudentId),
+       this.read(binding, () => this.port.getWorkResults(binding.source, work.workId), "ASSESSMENT", r => r.workId === work.workId && r.externalStudentId === this.context.identity.externalStudentId), this.materials(binding, works.items),
++      binding.kind === "OFFERING" ? this.results(binding) : Promise.resolve(undefined),
+     ]);
+@@ -176,5 +214,12 @@ export class LearningService {
+     const validResults = results.items.filter(r => !r.stageId || stages.items.some(s => s.stageId === r.stageId));
+     if (validResults.length !== results.items.length) { results.complete = false; results.errors.push({ dataset: "ASSESSMENT", code: "SOURCE_INVALID" }); }
+-    return { data: { work: this.workSummary(binding, work, sourceProgress, progress.state), ...(work.description ? { description: work.description } : {}), ...(work.topicLabel ? { topic: work.topicLabel } : {}),
++    const latestResult = validResults.slice().sort((a, b) => (b.assessedAt ?? "").localeCompare(a.assessedAt ?? ""))[0];
++    const linkedResult = linkedResults?.data.components.find(component => component.linkedWorkId === publicWork && component.value);
++    const linkedResultsComplete = binding.kind !== "OFFERING" || linkedResults?.data.componentsState.isComplete === true;
++    const publishedResult: PublishedWorkResult | null | undefined = latestResult
++      ? { value: this.value(latestResult.value), ...(latestResult.assessedAt ? { assessedAt: latestResult.assessedAt } : {}) }
++      : linkedResult?.value ? { value: linkedResult.value, ...(linkedResult.assessedAt ? { assessedAt: linkedResult.assessedAt } : {}) }
++        : results.complete === true && linkedResultsComplete ? null : undefined;
++    return { data: { work: this.workSummary(binding, work, sourceProgress, progress.state, publishedResult), ...(work.description ? { description: work.description } : {}), ...(work.topicLabel ? { topic: work.topicLabel } : {}),
+       progress: status, stages: publicStages, stagesState: listStatus(stages), results: validResults.map(r => ({ resultId: this.id(binding, "work-result", r.resultId), value: this.value(r.value), ...(r.stageId ? { stageId: this.id(binding, "stage", r.stageId) } : {}), ...(r.assessedAt ? { assessedAt: r.assessedAt } : {}) })), resultsState: listStatus(results),
+       relatedMaterials: materials.items.filter(m => m.relatedWorkIds?.includes(publicWork)), materialsState: listStatus(materials.slice), ...(stageRef ? { focusStageId: stageRef } : {}) }, meta: this.meta([works, progress, stages, stageProgress, results, materials.slice, ...linkedResults.slices]) };
+@@ -346,13 +391,35 @@ export class LearningService {
+   async offeringDetail(binding: LearningBinding) {
+     if (binding.kind !== "OFFERING") throw notFound();
+     const works = await this.works(binding), progress = await this.progressSlice(binding, works.items), [results, materials] = await Promise.all([this.results(binding), this.materials(binding, works.items)]);
++    const progressByWork = new Map(progress.items.map(item => [item.workId, item]));
++    const reviewCandidates = works.items.filter(work => isReviewCandidate(progressByWork.get(work.workId)));
++    const publishedResults = await this.workResultSummaries(binding, reviewCandidates);
++    const publishedByWork = new Map(publishedResults.byWork);
++    for (const work of works.items) {
++      const linked = results.data.components.find(component => component.linkedWorkId === this.id(binding, "work", work.workId) && component.value);
++      if (linked?.value && !publishedByWork.get(work.workId)) {
++        publishedByWork.set(work.workId, { value: linked.value, ...(linked.assessedAt ? { assessedAt: linked.assessedAt } : {}) });
++      }
++    }
++    const resultStatusesComplete = reviewCandidates.every(work => publishedByWork.has(work.workId));
++    const countsComplete = works.complete === true && progress.complete === true && resultStatusesComplete && results.data.componentsState.isComplete === true;
++    const reviewedCount = countsComplete ? works.items.filter(work => {
++      const status = getWorkStatus(progressByWork.get(work.workId) ? this.progress(progressByWork.get(work.workId)) : undefined, publishedByWork.get(work.workId));
++      return status === "REVIEWED" || status === "RESULT_PUBLISHED" || status === "NEEDS_REVISION";
++    }).length : null;
++    const awaitingReviewCount = countsComplete ? works.items.filter(work => isAwaitingReview(progressByWork.get(work.workId), publishedByWork.get(work.workId))).length : null;
++    const workCounts: WorkCounts = {
++      total: works.complete === true ? works.items.length : null,
++      reviewed: reviewedCount,
++      awaitingReview: awaitingReviewCount,
++    };
+     const period = binding.period;
+     let sessions: Awaited<ReturnType<ScheduleService["sessions"]>> | null = null;
+     try { sessions = period.startsOn && period.endsOn ? await this.schedule.sessions(binding.publicPeriod, binding.publicContext, { from: period.startsOn, to: period.endsOn }, 20) : null; }
+     catch (error) { if (error instanceof AppError && error.code === "SOURCE_REVISION_CHANGED") throw error; }
+-    const workPage = pageSlice(works.items.map(w => this.workSummary(binding, w, progress.items.find(p => p.workId === w.workId), progress.state)), this.context.auth.accountId, ["works", binding.publicPeriod, binding.publicContext, 20], this.context.revision, 20);
++    const workPage = pageSlice(works.items.map(work => this.workSummary(binding, work, progressByWork.get(work.workId), progress.state, publishedByWork.get(work.workId))), this.context.auth.accountId, ["works", binding.publicPeriod, binding.publicContext, 20], this.context.revision, 20);
+     const data: OfferingDetail = { offering: await this.schedule.summary(binding.period, binding.source.offeringId!), sessions: sessions?.data.items ?? [], sessionsState: sessions ? { dataState: sessions.data.dataState, isComplete: sessions.data.isComplete, nextCursor: sessions.data.nextCursor } : { dataState: "SOURCE_ERROR", isComplete: false, nextCursor: null },
+-      works: workPage.items, worksState: { ...listStatus(works), nextCursor: workPage.nextCursor }, results: results.data, materials: materials.items, materialsState: listStatus(materials.slice),
++      works: workPage.items, worksState: { ...listStatus(works), nextCursor: workPage.nextCursor }, workCounts, results: results.data, materials: materials.items, materialsState: listStatus(materials.slice),
+       progressLines: { activity: works.state, completion: progress.state === "SOURCE_ERROR" ? "SOURCE_ERROR" : progress.items.some(p => p.completionStatusCode || p.completedAt) ? "READY" : "UNKNOWN", results: results.data.officialResultState } };
+-    return { data, meta: this.meta([works, progress, ...results.slices, materials.slice, ...(!sessions || sessions.meta.completeness === false ? [{ items: [], complete: false, state: "SOURCE_ERROR" as const, errors: sessions?.meta.partialErrors ?? [{ dataset: "SCHEDULE" as const, code: "SOURCE_UNAVAILABLE" as const }] }] : [])]) };
++    return { data, meta: this.meta([works, progress, ...publishedResults.slices, ...results.slices, materials.slice, ...(!sessions || sessions.meta.completeness === false ? [{ items: [], complete: false, state: "SOURCE_ERROR" as const, errors: sessions?.meta.partialErrors ?? [{ dataset: "SCHEDULE" as const, code: "SOURCE_UNAVAILABLE" as const }] }] : [])]) };
+   }
+diff --git a/src/modules/learning/discipline-content.tsx b/src/modules/learning/discipline-content.tsx
+--- a/src/modules/learning/discipline-content.tsx
++++ b/src/modules/learning/discipline-content.tsx
+@@ -1,43 +1,40 @@
+ "use client";
+ 
+ import Link from "next/link";
+-import { useEffect, useRef, useState } from "react";
+ import { BookOpen, CalendarDays, CheckCircle2, Download, FileText, GraduationCap, Hourglass } from "lucide-react";
+ import type { OfferingDetail, ScheduleDetail, WorkSummary, Material, AssessmentComponent, SessionPage } from "@/shared/contracts/student-api";
+ import { academicDate, assessmentValue, dataStateText, targetHref } from "@/shared/ui/academic";
+ import { materialFormat } from "@/shared/lib/material-format";
+ import { PagedList } from "@/shared/ui/paged-list";
+-import { SessionListResponseSchema, TimelineListResponseSchema, WorkListResponseSchema } from "@/shared/contracts/student-api";
+-import { useRemote } from "@/shared/api/use-remote";
+-import { api, safeClientMessage } from "@/shared/api/client";
+-import type { TimelineEntry } from "@/shared/contracts/student-api";
++import { SessionListResponseSchema, WorkListResponseSchema } from "@/shared/contracts/student-api";
++import { getWorkStatus, workStatusLabel } from "./work-status";
++import { WorkStatusBadge } from "./work-status-badge";
+ 
+-function workStatus(work: WorkSummary) {
+-  const p = work.progress;
+-  if (!p || p.dataState === "SOURCE_ERROR") return p?.dataState === "SOURCE_ERROR" ? "Источник статусов недоступен" : "Статус не указан";
+-  return p.reviewStatusCode ?? p.submissionStatusCode ?? p.completionStatusCode ?? p.assignmentStatusCode ?? "Статус не указан";
+-}
+-
+-function awaitingReview(work: WorkSummary) {
+-  const p = work.progress;
+-  return !!p?.submittedAt && !p.reviewedAt && !p.reviewStatusCode;
+-}
+-
+ function needsAction(work: WorkSummary) {
+-  const p = work.progress;
+-  if (!p || p.dataState !== "READY" || awaitingReview(work)) return false;
+-  if (p.reviewStatusCode && /доработ|вернул/iu.test(p.reviewStatusCode)) return true;
+-  if (p.reviewedAt) return false;
+-  return !!work.due && !!p.submissionStatusCode && /не отправ|не сдан|не передан/iu.test(p.submissionStatusCode);
++  const status = getWorkStatus(work.progress, work.publishedResult);
++  return status === "NEEDS_REVISION" || status === "NOT_SUBMITTED" || status === "NOT_COMPLETED";
+ }
++
++function pluralRu(value: number, forms: [string, string, string]) {
++  const lastTwo = value % 100;
++  const last = value % 10;
++  if (lastTwo >= 11 && lastTwo <= 14) return forms[2];
++  if (last === 1) return forms[0];
++  if (last >= 2 && last <= 4) return forms[1];
++  return forms[2];
++}
+ 
++function linkedResultForWork(work: WorkSummary, components: AssessmentComponent[]) {
++  return components.find(component => component.linkedWorkId === work.workId && component.value);
++}
++
+ function workResult(work: WorkSummary, components: AssessmentComponent[]) {
++  const linked = linkedResultForWork(work, components);
+-  const linked = components.find(c => c.linkedWorkId === work.workId);
+-  return work.publishedResult ? assessmentValue(work.publishedResult.value)
+-    : linked?.value ? assessmentValue(linked.value)
+-      : workStatusLabel(getWorkStatus(work.progress, work.publishedResult));
++  return work.publishedResult ? assessmentValue(work.publishedResult.value)
++    : linked?.value ? assessmentValue(linked.value)
++      : workStatusLabel(getWorkStatus(work.progress, work.publishedResult));
+ }
+ 
+ function SectionEmpty({ state, empty }: { state: OfferingDetail["worksState"]; empty: string }) {
+-  return <p className="discipline-empty">{state.dataState === "SOURCE_ERROR" ? "Источник временно недоступен. Обновите страницу, чтобы повторить запрос." : state.isComplete === true ? empty : "Сведения неполны. Обновите страницу позже."}</p>;
++  return <p className="discipline-empty">{state.dataState === "SOURCE_ERROR" ? "Не удалось загрузить данные. Обновите страницу." : state.isComplete === true ? empty : "Данные загружены не полностью. Попробуйте обновить страницу."}</p>;
+ }
+@@ -55,76 +52,45 @@ export function AttendancePreview({ items, complete, base }: { items: ScheduleD
+ }
+ 
+ export function DisciplineOverview({ detail, base }: { detail: OfferingDetail; base: string }) {
+-  const worksComplete = detail.worksState.isComplete === true && !detail.worksState.nextCursor;
+-  const reviewing = detail.works.filter(awaitingReview);
++  const reviewing = detail.workCounts.awaitingReview;
++  const reviewed = detail.workCounts.reviewed;
+   const attention = detail.works.filter(needsAction);
+   const attestation = detail.results.attestations[0];
+-  const recent = [...detail.works].filter(w => w.progress?.reviewedAt || w.progress?.submittedAt).sort((a, b) => (b.progress?.reviewedAt ?? b.progress?.submittedAt ?? "").localeCompare(a.progress?.reviewedAt ?? a.progress?.submittedAt ?? "")).slice(0, 3);
++  const recent = [...detail.works].filter(work => work.publishedResult || linkedResultForWork(work, detail.results.components)?.value)
++    .sort((a, b) => (b.publishedResult?.assessedAt ?? linkedResultForWork(b, detail.results.components)?.assessedAt ?? "").localeCompare(a.publishedResult?.assessedAt ?? linkedResultForWork(a, detail.results.components)?.assessedAt ?? "")).slice(0, 3);
+   return <div className="discipline-overview">
+     <div className="discipline-stats">
+-      <Link className="discipline-stat" href={`${base}/works`}><span className="discipline-stat-icon"><FileText /></span><span>Работы: <strong>{worksComplete ? detail.works.length : detail.works.length ? `от ${detail.works.length}` : "—"}</strong></span></Link>
+-      <Link className="discipline-stat" href={`${base}/works?filter=REVIEW`}><span className="discipline-stat-icon"><Hourglass /></span><span>На проверке: <strong>{worksComplete ? reviewing.length : reviewing.length ? `от ${reviewing.length}` : "—"}</strong></span></Link>
++      <Link className="discipline-stat" href={`${base}/works`}><span className="discipline-stat-icon"><FileText /></span><span className="discipline-stat-copy"><strong>{detail.workCounts.total === null ? "Количество уточняется" : `${detail.workCounts.total} ${pluralRu(detail.workCounts.total, ["задание", "задания", "заданий"])}`}</strong><small>{reviewed === null ? "Статусы уточняются" : `Проверено ${reviewed} ${pluralRu(reviewed, ["работа", "работы", "работ"])}`}</small></span></Link>
++      <Link className="discipline-stat" href={`${base}/works?filter=REVIEW`}><span className="discipline-stat-icon"><Hourglass /></span><span className="discipline-stat-copy"><strong>{reviewing === null ? "Уточняется" : reviewing === 0 ? "Нет работ" : `${reviewing} ${pluralRu(reviewing, ["работа", "работы", "работ"])}`}</strong><small>На проверке</small></span></Link>
+-      <Link className="discipline-stat discipline-stat-attestation" href={`${base}?tab=performance#attestation`}><span className="discipline-stat-icon"><GraduationCap /></span><span>Аттестация: <strong>{attestation ? `${attestation.kindLabel}${attestation.planned ? ` · ${academicDate(attestation.planned)}` : ""}` : dataStateText(detail.results.attestationsState.dataState)}</strong></span></Link>
++      <Link className="discipline-stat discipline-stat-attestation" href={`${base}?tab=performance#attestation`}><span className="discipline-stat-icon"><GraduationCap /></span><span className="discipline-stat-copy"><strong>{attestation ? `${attestation.kindLabel.toLocaleLowerCase("ru-RU")}${attestation.planned ? ` · ${academicDate(attestation.planned)}` : ""}` : "Пока не назначена"}</strong><small>Аттестация</small></span></Link>
+     </div>
+     <div className="discipline-main-grid">
+       <section className="discipline-panel discipline-attention"><div className="discipline-panel-head"><h2>Требует внимания</h2><Link href={`${base}/works`}>Все работы →</Link></div>
+-        {attention.length ? <div className="discipline-attention-list">{attention.slice(0, 4).map(work => <Link href={targetHref(work.target)} key={work.workId} className="discipline-attention-item" prefetch={false}><span className="discipline-inline-icon"><FileText /></span><span className="discipline-attention-copy"><strong>{work.title}</strong><small><CalendarDays size={15} /> {work.due ? `Срок: ${academicDate(work.due)}` : "Срок не указан"}</small></span><span className="discipline-status">{workStatus(work)}</span></Link>)}</div> : <SectionEmpty state={detail.worksState} empty="Сейчас нет работ, требующих действий" />}
++        {attention.length ? <div className="discipline-attention-list">{attention.slice(0, 4).map(work => <Link href={targetHref(work.target)} key={work.workId} className="discipline-attention-item" prefetch={false}><span className="discipline-inline-icon"><FileText /></span><span className="discipline-attention-copy"><strong>{work.title}</strong>{work.due && <small><CalendarDays size={15} /> Срок сдачи: {academicDate(work.due)}</small>}</span><WorkStatusBadge progress={work.progress} publishedResult={work.publishedResult} /></Link>)}</div> : <SectionEmpty state={detail.worksState} empty="Нет работ, требующих действий." />}
+       </section>
+       <div className="discipline-side-stack"><section className="discipline-panel discipline-recent"><div className="discipline-panel-head"><h2>Последние результаты</h2><Link href={`${base}?tab=performance`}>Подробнее →</Link></div>
+-        {recent.length ? <div className="discipline-recent-list">{recent.map(work => <Link key={work.workId} href={targetHref(work.target)} prefetch={false}><span className="discipline-inline-icon">{work.progress?.reviewedAt ? <CheckCircle2 /> : <Hourglass />}</span><span>{work.title}</span><strong>{workResult(work, detail.results.components)}</strong></Link>)}</div> : <SectionEmpty state={detail.worksState} empty="Результаты работ пока не опубликованы" />}
++        {recent.length ? <div className="discipline-recent-list">{recent.map(work => <Link key={work.workId} href={targetHref(work.target)} prefetch={false}><span className="discipline-inline-icon"><CheckCircle2 /></span><span>{work.title}</span><strong>{workResult(work, detail.results.components)}</strong></Link>)}</div> : <SectionEmpty state={detail.worksState} empty="Опубликованных результатов пока нет." />}
+       </section><AttendancePreview items={detail.sessions} complete={detail.sessionsState.isComplete} base={base} /></div>
+     </div>
+     <section className="discipline-material-section"><div className="discipline-panel-head"><h2>Материалы по дисциплине</h2><Link href={`${base}?tab=materials`}>Все материалы →</Link></div>{detail.materials.length ? <DisciplineMaterials items={detail.materials.slice(0, 3)} /> : <SectionEmpty state={detail.materialsState} empty="Материалы пока не опубликованы" />}</section>
+   </div>;
+ }
+ 
+-function WorkResultCard({ work, results, linkedResult, resultsState }: { work: WorkSummary; results: TimelineEntry[]; linkedResult?: AssessmentComponent; resultsState: "loading" | "unavailable" | "partial" | "complete" }) {
+-  const progress = work.progress;
+-  const unavailable = progress?.dataState === "SOURCE_ERROR";
+-  const published = results.filter(item => item.value);
++function WorkResultCard({ work }: { work: WorkSummary }) {
++  const result = work.publishedResult;
+   return <article className="discipline-result-card">
+     <span className="status-tag">{work.workTypeLabel}</span>
++    <WorkStatusBadge progress={work.progress} publishedResult={result} />
+     <h3><Link href={targetHref(work.target)} prefetch={false}>{work.title}</Link></h3>
+-    <p className="discipline-card-due">{work.due ? `Срок: ${academicDate(work.due)}` : "Срок не указан"}</p>
++    {work.due && <p className="discipline-card-due">Срок сдачи: {academicDate(work.due)}</p>}
+     <dl className="discipline-card-facts">
+-      <div><dt>Передача</dt><dd>{progress?.submissionStatusCode ?? (unavailable ? "Источник недоступен" : "Не указана")}</dd></div>
+-      <div><dt>Проверка</dt><dd>{progress?.reviewStatusCode ?? (unavailable ? "Источник недоступен" : "Не указана")}</dd></div>
+-      <div><dt>Результат</dt><dd>{published.length ? published.map(item => <span key={item.timelineKey}>{assessmentValue(item.value)}</span>) : linkedResult?.value ? assessmentValue(linkedResult.value) : resultsState === "complete" ? "Не опубликован" : resultsState === "loading" ? "Загружается" : resultsState === "partial" ? "Сведения неполны" : "Источник недоступен"}</dd></div>
++      <div><dt>Результат</dt><dd>{result ? assessmentValue(result.value) : "Результат пока не опубликован"}</dd></div>
+     </dl>
+-    <Link className="discipline-card-action" href={targetHref(work.target)} prefetch={false}>Открыть работу →</Link>
+   </article>;
+ }
+ 
+-function PublishedResults({ apiBase, components }: { apiBase: string; components: AssessmentComponent[] }) {
+-  const path = `${apiBase}/timeline?limit=100`;
+-  const { state, reload, isCurrent } = useRemote(path, TimelineListResponseSchema);
+-  const [extension, setExtension] = useState<{ base: unknown; items: TimelineEntry[]; nextCursor: string | null } | null>(null);
+-  const [busy, setBusy] = useState(false);
+-  const [error, setError] = useState<string | null>(null);
+-  const pending = useRef<AbortController | null>(null);
+-  useEffect(() => () => { pending.current?.abort(); pending.current = null; }, [path]);
+-  const extra = state.kind === "ready" && extension?.base === state.value ? extension : null;
+-  const all = state.kind === "ready" ? [...state.value.data.items, ...(extra?.items ?? [])] : [];
+-  const nextCursor = state.kind === "ready" ? extra ? extra.nextCursor : state.value.data.nextCursor : null;
+-  const results = all.filter(item => item.eventKind === "ASSESSED" && item.target.kind === "WORK");
+-  const resultsByWork = new Map<string, TimelineEntry[]>();
+-  for (const item of results) resultsByWork.set(item.target.targetRef, [...(resultsByWork.get(item.target.targetRef) ?? []), item]);
+-  const resultsState = state.kind === "loading" ? "loading" : state.kind === "error" ? "unavailable" : nextCursor || state.value.meta.sourceStatus === "PARTIAL" || state.value.data.isComplete !== true ? "partial" : "complete";
+-  async function more() {
+-    if (state.kind !== "ready" || !nextCursor || busy || pending.current) return;
+-    const controller = new AbortController(); pending.current = controller; setBusy(true); setError(null);
+-    try {
+-      const page = await api(`${path}&cursor=${encodeURIComponent(nextCursor)}`, TimelineListResponseSchema, { signal: controller.signal });
+-      if (!controller.signal.aborted && isCurrent()) setExtension({ base: state.value, items: [...(extra?.items ?? []), ...page.data.items], nextCursor: page.data.nextCursor });
+-    } catch (cause) { if (!controller.signal.aborted) setError(safeClientMessage(cause)); }
+-    finally { if (pending.current === controller) { pending.current = null; if (!controller.signal.aborted) setBusy(false); } }
+-  }
++function PublishedResults({ apiBase }: { apiBase: string }) {
+   return <div className="discipline-journal">
+-    {state.kind === "error" && <p className="notice notice-warning" role="alert">Не удалось получить опубликованные результаты. <button type="button" onClick={reload}>Повторить</button></p>}
+-    {state.kind === "loading" && <p className="discipline-hint" aria-live="polite">Получаем опубликованные результаты…</p>}
+-    <PagedList path={`${apiBase}/works?limit=20`} schema={WorkListResponseSchema} empty="Работы пока не указаны." renderItem={work => <WorkResultCard key={work.workId} work={work} results={resultsByWork.get(work.workId) ?? []} linkedResult={components.find(item => item.linkedWorkId === work.workId)} resultsState={resultsState} />} />
+-    {error && <p className="notice notice-warning" role="alert">{error} Уже загруженные результаты сохранены.</p>}
+-    {nextCursor && <button className="button button-secondary" type="button" disabled={busy} onClick={() => void more()}>{busy ? "Загружаем…" : "Показать ещё результаты"}</button>}
+-    {state.kind === "ready" && state.value.meta.sourceStatus === "PARTIAL" && <p className="discipline-hint">Сведения о результатах могут быть неполными.</p>}
++    <PagedList path={`${apiBase}/works?limit=20&filter=RESULT`} schema={WorkListResponseSchema} empty="Опубликованных результатов пока нет." renderItem={work => <WorkResultCard key={work.workId} work={work} />} />
+   </div>;
+ }
+@@ -146,2 +112,2 @@ export function DisciplinePerformance({ detail, apiBase }: { detail: OfferingDe
+     <section className="discipline-panel discipline-results-panel"><div className="discipline-panel-head"><h2>Результаты работ</h2></div>{detail.results.gradingModelLabel && <p className="discipline-hint">{detail.results.gradingModelLabel}</p>}
+-      <PublishedResults key={apiBase} apiBase={apiBase} components={components} />
++      <PublishedResults key={apiBase} apiBase={apiBase} />
+diff --git a/src/modules/learning/screens.tsx b/src/modules/learning/screens.tsx
+--- a/src/modules/learning/screens.tsx
++++ b/src/modules/learning/screens.tsx
+@@ -8,13 +8,17 @@ import * as dto from "@/shared/contracts/student-api";
+ import { RemoteState } from "@/shared/ui/remote-state";
+ import { PagedList } from "@/shared/ui/paged-list";
+-import { MaterialCards, ProgressFacts, academicDate, assessmentValue, dataStateText, targetHref } from "@/shared/ui/academic";
++import { MaterialCards, academicDate, assessmentValue, dataStateText, targetHref } from "@/shared/ui/academic";
+ import { Button } from "@/shared/ui/button";
+ import { PageHero } from "@/shared/ui/page-hero";
+ import { ScheduleCard } from "@/shared/ui/schedule-card";
+ import { DisciplineMaterials, DisciplineOverview, DisciplinePerformance } from "./discipline-content";
+ import { OfferingTabs } from "./offering-tabs";
++import { WorkStatusBadge } from "./work-status-badge";
+ 
+-export function WorkCard({ work, detailed = false }: { work: dto.WorkSummary; detailed?: boolean }) {
+-  const status = work.progress?.reviewStatusCode ?? work.progress?.submissionStatusCode ?? work.progress?.completionStatusCode ?? work.progress?.assignmentStatusCode;
+-  return <article className="surface work-card"><span className="status-tag">{work.workTypeLabel}</span><h3><Link href={targetHref(work.target)} prefetch={false}>{work.title}</Link></h3><div className="work-card-facts"><span>{work.due ? `Срок: ${academicDate(work.due)}` : "Срок не указан"}</span>{!detailed && <span>{status ?? (work.progress?.dataState === "SOURCE_ERROR" ? "Источник недоступен" : "Состояние не указано")}</span>}</div>{detailed && <><div className="work-card-stages"><span><small>Передача</small>{work.progress?.submissionStatusCode ?? (work.progress?.dataState === "SOURCE_ERROR" ? "Источник недоступен" : "Не указана")}</span><span><small>Проверка</small>{work.progress?.reviewStatusCode ?? (work.progress?.dataState === "SOURCE_ERROR" ? "Источник недоступен" : "Не указана")}</span></div><Link className="work-card-open" href={targetHref(work.target)} prefetch={false}>Открыть работу →</Link></>}</article>;
++export function WorkCard({ work }: { work: dto.WorkSummary }) {
++  return <article className="surface work-card">
++    <div className="work-card-top"><span className="status-tag">{work.workTypeLabel}</span><WorkStatusBadge progress={work.progress} publishedResult={work.publishedResult} /></div>
++    <h3><Link href={targetHref(work.target)} prefetch={false}>{work.title}</Link></h3>
++    {work.due && <div className="work-card-facts"><span>Срок сдачи: {academicDate(work.due)}</span></div>}
++  </article>;
+ }
+@@ -23,1 +27,1 @@
+-const eventLabels = { ISSUED: "Выдано", DUE: "Срок", COMPLETED: "Выполнено", SUBMITTED: "Передано на проверку", ASSESSED: "Оценено", REVIEWED: "Проверено", ACTUAL: "Подтверждено проведение", ATTESTATION: "Аттестация", PLANNED: "По расписанию" };
++const eventLabels = { ISSUED: "Выдано", DUE: "Срок", COMPLETED: "Выполнено", SUBMITTED: "Сдана на проверку", ASSESSED: "Оценено", REVIEWED: "Проверено", ACTUAL: "Подтверждено проведение", ATTESTATION: "Аттестация", PLANNED: "По расписанию" };
+@@ -49,1 +53,1 @@
+-    <PageHero eyebrow={detail.work.workTypeLabel} title={detail.work.title} description={detail.work.due ? `Срок выполнения: ${academicDate(detail.work.due)}. Подробности задания, этапы и результат — ниже.` : "Подробности задания, этапы выполнения и результат."} image={detail.stages.length ? "course-project.jpg" : "work-notes.jpg"}/>
++    <PageHero eyebrow={detail.work.workTypeLabel} title={detail.work.title} description={detail.stages.length ? "Подробности задания, этапы и результат — ниже." : "Подробности задания и результат — ниже."} image={detail.stages.length ? "course-project.jpg" : "work-notes.jpg"}/>
+@@ -50,8 +54,18 @@ export function WorkScreen({ periodId, contextId, workId, unit = false }: { peri
+     {state.value.meta.sourceStatus === "PARTIAL" && <p className="notice notice-warning">Часть сведений пока недоступна. Попробуйте обновить страницу позже.</p>}
+     <div className="learning-sections learning-work-layout">
+       {(detail.description || detail.topic) && <section className="surface learning-work-wide"><h2>Задание</h2>{detail.topic && <h3>{detail.topic}</h3>}{detail.description && <p className="plain-text">{detail.description}</p>}</section>}
+-      <section className="surface"><h2>Сроки и история</h2><dl className="data-list"><div><dt>Выдано</dt><dd>{academicDate(detail.work.issued)}</dd></div><div><dt>Срок</dt><dd>{detail.work.due ? academicDate(detail.work.due) : "Срок не указан"}</dd></div>{[["Выполнено", progress.completedAt], ["Передано на проверку", progress.submittedAt], ["Проверено", progress.reviewedAt]].map(([label, at]) => at ? <div key={label}><dt>{label}</dt><dd>{moment(at)}</dd></div> : null)}</dl></section>
+-      <section className="surface"><h2>Выполнение и проверка</h2><ProgressFacts progress={progress} /></section>
+-      <section className="surface learning-work-wide"><h2>Результат</h2>{detail.results.length ? detail.results.map(r => <div key={r.resultId}><p className="result-value">{assessmentValue(r.value)}</p>{r.assessedAt && <p className="muted small">Оценено: {moment(r.assessedAt)}</p>}</div>) : <p>{dataStateText(detail.resultsState.dataState)}</p>}</section>
+-      <section className="learning-work-wide"><h2>Этапы</h2>{detail.stages.length ? detail.stages.map(stage => <section className="surface stage-card" key={stage.stageId} id={stage.stageId} tabIndex={-1}><h3>{stage.title}</h3>{stage.description && <p>{stage.description}</p>}{stage.due && <p className="muted">Срок сдачи: {academicDate(stage.due)}</p>}<ProgressFacts progress={stage.progress ?? { dataState: "UNKNOWN" }} /></section>) : <p className="notice">{detail.stagesState.dataState === "SOURCE_ERROR" ? "Сведения об этапах временно недоступны" : "Сведения об этапах пока не указаны."}</p>}</section>
+-      <section className="learning-work-wide"><h2>Связанные материалы</h2>{detail.relatedMaterials.length ? <MaterialCards items={detail.relatedMaterials} /> : <p className="notice">{dataStateText(detail.materialsState.dataState)}</p>}</section>
++      <section className="surface learning-work-state">
++        <div className="learning-work-state-head"><h2>Состояние работы</h2><WorkStatusBadge progress={progress} publishedResult={detail.work.publishedResult} /></div>
++        {detail.work.due && <p className="muted">Срок сдачи: {academicDate(detail.work.due)}</p>}
++      </section>
++      <section className="surface learning-work-wide"><h2>Результат</h2>{detail.results.length ? detail.results.map(r => <div key={r.resultId}><p className="result-value">{assessmentValue(r.value)}</p>{r.assessedAt && <p className="muted small">Дата результата: {moment(r.assessedAt)}</p>}</div>) : detail.work.publishedResult ? <div><p className="result-value">{assessmentValue(detail.work.publishedResult.value)}</p>{detail.work.publishedResult.assessedAt && <p className="muted small">Дата результата: {moment(detail.work.publishedResult.assessedAt)}</p>}</div> : <p>{detail.resultsState.isComplete === true ? "Результат пока не опубликован." : "Результат пока недоступен."}</p>}</section>
++      <section className="learning-work-wide"><h2>Этапы</h2>{detail.stages.length ? detail.stages.map(stage => {
++        const stageResult = detail.results.find(result => result.stageId === stage.stageId);
++        const stagePublishedResult = stageResult ? { value: stageResult.value, ...(stageResult.assessedAt ? { assessedAt: stageResult.assessedAt } : {}) } : detail.resultsState.isComplete === true ? null : undefined;
++        return <section className="surface stage-card" key={stage.stageId} id={stage.stageId} tabIndex={-1}>
++          <div className="learning-work-state-head"><h3>{stage.title}</h3><WorkStatusBadge progress={stage.progress ?? { dataState: "UNKNOWN" }} publishedResult={stagePublishedResult} /></div>
++          {stage.description && <p>{stage.description}</p>}
++          {stage.due && <p className="muted">Срок сдачи: {academicDate(stage.due)}</p>}
++        </section>;
++      }) : <p className="notice">{detail.stagesState.isComplete === true ? "Этапы пока не добавлены." : "Не удалось загрузить этапы."}</p>}</section>
++      <section className="learning-work-wide"><h2>Связанные материалы</h2>{detail.relatedMaterials.length ? <MaterialCards items={detail.relatedMaterials} /> : <p className="notice">{detail.materialsState.isComplete === true ? "Материалы пока не добавлены." : "Не удалось загрузить материалы."}</p>}</section>
+diff --git a/src/modules/learning/works-page.tsx b/src/modules/learning/works-page.tsx
+--- a/src/modules/learning/works-page.tsx
++++ b/src/modules/learning/works-page.tsx
+@@ -48,1 +48,1 @@ export async function WorksPage({ periodId, contextId, unit = false, searchParam
+-      <div className="record-list discipline-work-list">{page.data.items.map(work => <WorkCard key={work.workId} work={work} detailed />)}</div>
++      <div className="record-list discipline-work-list">{page.data.items.map(work => <WorkCard key={work.workId} work={work} />)}</div>
+diff --git a/документация/API/Контракт_студенческого_API.yaml b/документация/API/Контракт_студенческого_API.yaml
+--- a/документация/API/Контракт_студенческого_API.yaml
++++ b/документация/API/Контракт_студенческого_API.yaml
+@@ -3462,5 +3462,17 @@ components:
+         - value
+ 
++    PublishedWorkResult:
++      type: object
++      description: Последний опубликованный результат по учебной работе.
++      properties:
++        value:
++          $ref: '#/components/schemas/AssessmentValue'
++        assessedAt:
++          type: string
++          format: date-time
++      additionalProperties: false
++      required:
++        - value
+     WorkSummary:
+       type: object
+       properties:
+@@ -3495,4 +3507,9 @@ components:
+         due:
+           $ref: '#/components/schemas/AcademicDate'
++        publishedResult:
++          description: null означает, что отсутствие результата подтверждено; отсутствие поля означает, что источник не позволил определить состояние.
++          oneOf:
++            - $ref: '#/components/schemas/PublishedWorkResult'
++            - type: 'null'
+         progress:
+           $ref: '#/components/schemas/WorkProgress'
+@@ -3723,2 +3740,17 @@ components:
++    WorkCounts:
++      type: object
++      description: Сводные показатели по полному списку работ; null означает, что число нельзя подтвердить.
++      properties:
++        total:
++          type: [integer, 'null']
++          minimum: 0
++        reviewed:
++          type: [integer, 'null']
++          minimum: 0
++        awaitingReview:
++          type: [integer, 'null']
++          minimum: 0
++      additionalProperties: false
++      required: [total, reviewed, awaitingReview]
+     OfferingDetail:
+       type: object
+@@ -3738,4 +3770,7 @@ components:
+         worksState:
+           $ref: '#/components/schemas/ListStatus'
++        workCounts:
++          description: Полные показатели по работам дисциплины.
++          $ref: '#/components/schemas/WorkCounts'
+         results:
+           $ref: '#/components/schemas/ResultsView'
+@@ -3767,3 +3802,4 @@ components:
+         - works
+         - worksState
++        - workCounts
+         - results
+diff --git a/src/app/globals.css b/src/app/globals.css
+--- a/src/app/globals.css
++++ b/src/app/globals.css
+@@ -108,3 +108,15 @@
+ .lesson-tags { display:flex; flex-wrap:wrap; gap:6px; }
+ .status-tag { padding:3px 7px; font-size:11px; font-weight:600; border-radius:6px; color:var(--secondary); background:var(--surface-muted); }
++.work-status--result_published,.work-status--reviewed { color:#24613D; background:#EAF5EE; }
++.work-status--awaiting_review { color:#875711; background:#FFF3DF; }
++.work-status--needs_revision,.work-status--not_submitted,.work-status--not_completed { color:#963A45; background:#FBEDEF; }
++.work-status--in_progress,.work-status--completed { color:#76551B; background:#F7F1E6; }
++.work-status--no_activity,.work-status--not_started,.work-status--uncertain,.work-status--unavailable,.work-status--not_applicable { color:#66545C; background:#F1ECEF; }
++.work-card-top { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
++.work-status { white-space:nowrap; }
++.learning-work-state-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
++.learning-work-state-head h2,.learning-work-state-head h3 { margin:0; }
++.learning-work-state { align-self:start; }
++.learning-work-state p { margin:10px 0 0; }
++.discipline-result-card .discipline-card-facts { grid-template-columns:1fr; }
+ .status-rescheduled { color:var(--primary); background:var(--tint); }
+@@ -1234,2 +1246,2 @@
+ .work-card-facts { display:flex; flex-wrap:wrap; gap:5px 15px; margin-top:4px; color:#6D5360; font-size:13px; line-height:1.4; }
+-.work-card-facts span:last-child { color:#8D1A43; font-weight:700; }
++.work-card-facts span:last-child { color:inherit; font-weight:500; }
+@@ -1253,1 +1265,4 @@
+ .discipline-stat { display:flex; align-items:center; gap:20px; min-height:101px; min-width:0; padding:17px 26px; border:1px solid #DFC0CB; border-radius:16px; background:#FFF; color:#321824; text-decoration:none; font:700 clamp(19px,1.45vw,24px)/1.2 var(--puls-serif); box-shadow:0 6px 20px rgb(52 19 34 / 3%); }
++.discipline-stat-copy { display:grid; gap:4px; min-width:0; }
++.discipline-stat-copy strong { font-size:1.05em; }
++.discipline-stat-copy small { color:#705B64; font:600 12px/1.35 var(--puls-sans); }
+diff --git a/tests/unit/work-status.test.ts b/tests/unit/work-status.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/work-status.test.ts
+@@ -0,0 +1,63 @@
++import { describe, expect, it } from "vitest";
++import { getWorkStatus, isAwaitingReview } from "@/modules/learning/work-status";
++
++const submitted = {
++  dataState: "READY" as const,
++  assignmentStatusCode: "Выдано",
++  completionStatusCode: "Выполнение подтверждено",
++  submissionStatusCode: "Передано на проверку",
++  submittedAt: "2026-11-09T12:00:00+06:00",
++};
++
++const publishedZero = {
++  value: { kind: "NUMERIC" as const, numeric: "0", rawValueText: "0 баллов" },
++  assessedAt: "2026-11-10T10:00:00+06:00",
++};
++
++describe("единый статус учебной работы", () => {
++  it("считает выполненную и отправленную работу ожидающей проверки, если результата ещё нет", () => {
++    expect(getWorkStatus(submitted, null)).toBe("AWAITING_REVIEW");
++    expect(isAwaitingReview(submitted, null)).toBe(true);
++  });
++
++  it("считает работу проверенной, если результат опубликован, даже без reviewedAt", () => {
++    expect(getWorkStatus(submitted, publishedZero)).toBe("RESULT_PUBLISHED");
++    expect(isAwaitingReview(submitted, publishedZero)).toBe(false);
++  });
++
++  it("не считает работу ожидающей проверки, если источник результата пока не дал однозначный ответ", () => {
++    expect(getWorkStatus(submitted, undefined)).toBe("UNCERTAIN");
++    expect(isAwaitingReview(submitted, undefined)).toBe(false);
++  });
++
++  it("учитывает отметку проверки, даже если отдельный результат не опубликован", () => {
++    expect(getWorkStatus({ ...submitted, reviewStatusCode: "Проверено", reviewedAt: "2026-11-10T10:00:00+06:00" }, null)).toBe("REVIEWED");
++  });
++
++  it("возврат на доработку важнее старого опубликованного результата", () => {
++    expect(getWorkStatus({ ...submitted, reviewStatusCode: "Возвращено на доработку" }, publishedZero)).toBe("NEEDS_REVISION");
++  });
++
++  it("показывает опубликованный результат, даже если отдельной записи о выполнении нет", () => {
++    expect(getWorkStatus(undefined, publishedZero)).toBe("RESULT_PUBLISHED");
++  });
++
++  it("распознаёт ожидание проверки по статусу проверки", () => {
++    const waiting = { dataState: "READY" as const, reviewStatusCode: "На проверке" };
++    expect(getWorkStatus(waiting, null)).toBe("AWAITING_REVIEW");
++  });
++
++  it("не принимает отметку «не сдано» за отправленную работу", () => {
++    const notSubmitted = { ...submitted, submittedAt: undefined, submissionStatusCode: "Не сдано" };
++    expect(getWorkStatus(notSubmitted, null)).toBe("NOT_SUBMITTED");
++    expect(isAwaitingReview(notSubmitted, null)).toBe(false);
++  });
++
++  it("не придумывает выполнение, если по работе нет отметок", () => {
++    expect(getWorkStatus(undefined, undefined)).toBe("NO_ACTIVITY");
++  });
++
++  it("отличает недоступный источник от отсутствия отметок", () => {
++    expect(getWorkStatus({ dataState: "SOURCE_ERROR" }, undefined)).toBe("UNAVAILABLE");
++  });
++});
+diff --git a/tests/integration/work-display.test.ts b/tests/integration/work-display.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/integration/work-display.test.ts
+@@ -0,0 +1,71 @@
++import { afterAll, beforeAll, describe, expect, it } from "vitest";
++import { randomUUID } from "node:crypto";
++import { AuthService } from "@/modules/auth/service";
++import type { AuthContext } from "@/modules/auth/context";
++import { learningService } from "@/modules/learning/composition";
++import { getWorkStatus } from "@/modules/learning/work-status";
++import { readConfig } from "@/shared/server/config";
++import { database } from "@/shared/server/db";
++import { prepareTestDatabase, testDatabase } from "../support/database";
++
++const admin = testDatabase();
++let student: AuthContext;
++
++beforeAll(async () => {
++  const fixture = await prepareTestDatabase(admin);
++  const auth = new AuthService(database(), readConfig());
++  const session = await auth.login("demo-a", fixture.passwords[0], "127.0.0.1");
++  student = await auth.requireSession(session.token, randomUUID());
++});
++
++afterAll(async () => {
++  await admin.$disconnect();
++  await database().$disconnect();
++});
++
++async function mathematics() {
++  const service = await learningService(student, admin);
++  const period = service.context.record.periods.find(item => item.periodId === "fall-2026")!;
++  const periodId = service.context.periodId(period);
++  for await (const binding of service.bindings(periodId)) {
++    if (binding.title === "Математический анализ") return { service, binding };
++  }
++  throw new Error("Не найдена дисциплина «Математический анализ».");
++}
++
++describe("отображение учебных работ", () => {
++  it("не считает опубликованный нулевой результат работой, ожидающей проверки", async () => {
++    const { service, binding } = await mathematics();
++    const list = await service.listWorks(binding, 100, undefined, { filter: "ALL", sort: "DUE", query: "" });
++    const lab3 = list.data.items.find(item => item.title.startsWith("Лабораторная работа № 3:"))!;
++
++    expect(lab3.progress?.submittedAt).toBeTruthy();
++    expect(lab3.progress?.reviewedAt).toBeUndefined();
++    expect(lab3.publishedResult?.value.rawValueText).toBe("0 баллов");
++    expect(getWorkStatus(lab3.progress, lab3.publishedResult)).toBe("RESULT_PUBLISHED");
++    const detail = await service.workDetail(binding, lab3.workId);
++    expect(detail.data.work.publishedResult?.value.rawValueText).toBe("0 баллов");
++
++    const review = await service.listWorks(binding, 100, undefined, { filter: "REVIEW", sort: "DUE", query: "" });
++    expect(review.data.items.some(item => item.workId === lab3.workId)).toBe(false);
++    expect(review.data.items).toHaveLength(0);
++  });
++
++  it("показывает точное количество работ по всей дисциплине, а не по первой странице", async () => {
++    const { service, binding } = await mathematics();
++    const detail = await service.offeringDetail(binding);
++
++    expect(detail.data.works).toHaveLength(20);
++    expect(detail.data.worksState.nextCursor).toBeTruthy();
++    expect(detail.data.workCounts).toEqual({ total: 26, reviewed: 2, awaitingReview: 0 });
++  });
++
++  it("возвращает опубликованный результат в списке результатов без отдельной хронологии", async () => {
++    const { service, binding } = await mathematics();
++    const results = await service.listWorks(binding, 20, undefined, { filter: "RESULT", sort: "DUE", query: "" });
++
++    expect(results.data.items).toHaveLength(1);
++    expect(results.data.items[0].title).toMatch(/^Лабораторная работа № 3:/u);
++    expect(results.data.items[0].publishedResult?.value.rawValueText).toBe("0 баллов");
++  });
++});

@@ -11,6 +11,13 @@ import type { ExternalRef } from "@/server/integrations/contracts";
 
 type BoundRecord = { raw: ScheduleRecord; entry: ScheduleEntry; period: AcademicPeriod };
 type Snapshot = { records: BoundRecord[]; complete: boolean; errors: PartialError[] };
+export type RelatedClassDetail = {
+  ref: ExternalRef;
+  scheduleId: string;
+  plannedStart: string;
+  timeZone: string;
+  topic?: string;
+};
 export class ScheduleService {
   constructor(readonly context: StudentAcademicContext, private port: SchedulePort) {}
   private meta(complete: boolean, errors: PartialError[] = []): ResponseMeta {
@@ -18,8 +25,12 @@ export class ScheduleService {
       completenessByDataset: { context: !this.context.partial, schedule: complete }, partialErrors: errors.slice(0, 30) };
   }
   periods(): PeriodListResponse {
-    const items: PublicPeriod[] = this.context.record.periods.map(p => ({ periodId: this.context.periodId(p), label: p.label,
-      isCurrent: p.periodId === this.context.currentPeriod()?.periodId, ...(p.startsOn ? { startsOn: p.startsOn } : {}), ...(p.endsOn ? { endsOn: p.endsOn } : {}) }));
+    const ordered = [...this.context.record.periods].sort((a, b) =>
+      a.startsOn && b.startsOn ? a.startsOn.localeCompare(b.startsOn) || a.periodId.localeCompare(b.periodId)
+        : a.startsOn ? -1 : b.startsOn ? 1 : a.periodId.localeCompare(b.periodId));
+    const currentId = this.context.currentPeriod()?.periodId;
+    const items: PublicPeriod[] = ordered.map(p => ({ periodId: this.context.periodId(p), label: p.label,
+      isCurrent: p.periodId === currentId, ...(p.startsOn ? { startsOn: p.startsOn } : {}), ...(p.endsOn ? { endsOn: p.endsOn } : {}) }));
     return { data: { items, nextCursor: null, isComplete: this.context.isComplete, dataState: items.length ? "READY" : this.context.isComplete ? "EMPTY_CONFIRMED" : "UNKNOWN" }, meta: this.meta(this.context.isComplete) };
   }
   async summary(period: AcademicPeriod, offeringId: string, on = this.context.today): Promise<OfferingSummary> {
@@ -111,6 +122,53 @@ export class ScheduleService {
     const snapshot=await this.snapshot({from:period.startsOn,to:period.endsOn},period);
     const matches=snapshot.records.filter(r=>r.raw.offeringId===offeringId&&refs.some(ref=>ref.sourceCode===r.raw.ref.sourceCode&&ref.objectKind===r.raw.ref.objectKind&&ref.externalId===r.raw.ref.externalId));
     return {ids:matches.map(r=>r.entry.scheduleId),complete:snapshot.complete&&matches.length===refs.length};
+  }
+  async relatedClassesWithDetails(period: AcademicPeriod, offeringId: string, refs: ExternalRef[]): Promise<{ items: RelatedClassDetail[]; complete: boolean }> {
+    if (!period.startsOn || !period.endsOn) return { items: [], complete: false };
+
+    const range = { from: period.startsOn, to: period.endsOn };
+    const snapshot = await this.snapshot(range, period);
+    const refKeys = new Set(refs.map(ref => `${ref.sourceCode}\0${ref.objectKind}\0${ref.externalId}`));
+    const matches = snapshot.records.filter(record =>
+      record.raw.offeringId === offeringId &&
+      refKeys.has(`${record.raw.ref.sourceCode}\0${record.raw.ref.objectKind}\0${record.raw.ref.externalId}`),
+    );
+    if (!matches.length) return { items: [], complete: snapshot.complete && refs.length === 0 };
+
+    const scope = this.context.sourcePeriod(period);
+    let actuals: ActualClass[] = [];
+    let actualComplete = false;
+    try {
+      const read = await this.port.getActualSessions(scope, range);
+      this.context.checkRead(read, period);
+      if (read.availability !== "ERROR") {
+        actuals = read.items.filter(item =>
+          item.ref.sourceCode === this.context.identity.sourceCode &&
+          item.periodId === period.periodId &&
+          item.offeringId === offeringId,
+        );
+        actualComplete = read.isComplete === true;
+      }
+    } catch (error) {
+      if (error instanceof AppError && error.code === "SOURCE_REVISION_CHANGED") throw error;
+    }
+
+    let complete = snapshot.complete && actualComplete && matches.length === refs.length;
+    const items = matches.map(record => {
+      const candidates = actuals.filter(item =>
+        item.scheduleEntryId === record.raw.scheduleEntryId && item.occurrenceId === record.raw.occurrenceId,
+      );
+      if (candidates.length > 1) complete = false;
+      const actual = candidates.length === 1 ? candidates[0] : undefined;
+      return {
+        ref: record.raw.ref,
+        scheduleId: record.entry.scheduleId,
+        plannedStart: record.entry.plannedStart!,
+        timeZone: record.entry.timeZone!,
+        ...(actual?.topic?.trim() ? { topic: actual.topic.trim() } : {}),
+      };
+    });
+    return { items, complete };
   }
   private async details(bound: BoundRecord) {
     const range = { from: localDay(bound.raw.startsAt!, bound.raw.timeZone!), to: localDay(bound.raw.startsAt!, bound.raw.timeZone!) };

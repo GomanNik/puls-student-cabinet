@@ -43,10 +43,15 @@ export function fixtureLearning(scope: SourceLearningScope) {
     planned: on(archived ? "2026-06-10" : "2027-01-15"), locationLabel: "Аудитория 201" }];
   const courseResults: CourseResult[] = !valid || !offering ? [] : [{ ref: ref("COURSE_RESULT", `${contextId}:official`), courseResultId: `${contextId}:official`, periodId: scope.periodId, offeringId: scope.offeringId!, externalStudentId: scope.externalStudentId,
     resultState: archived ? "READY" : "PENDING", ...(archived ? { result: { kind: "TEXT" as const, text: math ? "Хорошо" : "Зачтено" }, assessedAt: "2026-06-10T12:00:00+06:00" } : {}), attestationId }];
+  const lessonRefs = scope.offeringId
+    ? fixtureSchedule(scope.externalStudentId, scope.periodId, `${month}-02`, `${month}-08`)
+      .filter(record => record.offeringId === scope.offeringId && !record.subgroupId && record.lessonType === "Лекция")
+      .slice(0, 1).map(record => record.ref)
+    : [];
   const materials:Material[]=!valid?[]:Object.entries(learningAssets).map(([key,asset])=>({
     ref:ref("MATERIAL",`${contextId}:material-${key}`),materialId:`${contextId}:material-${key}`,title:asset.filename,kind:"FILE",resourceHandle:`fixture-file:${key}`,mimeType:asset.mime,...context,
-    // Самостоятельный конспект не создаёт/не имитирует задание ASSIGNED_NOTES.
-    relatedClassRefs:key==="guide"&&scope.offeringId?fixtureSchedule(scope.externalStudentId,scope.periodId,`${month}-02`,`${month}-08`).filter(r=>r.offeringId===scope.offeringId&&!r.subgroupId).slice(0,1).map(r=>r.ref):[],relatedWorkRefs:key==="notes"?[]:key==="guide"||key==="solution"?works[2]?[works[2].ref]:works[0]?[works[0].ref]:[]:works[0]?[works[0].ref]:[],audiences
+    // Конспект является материалом конкретной лекции, а не самостоятельным заданием.
+    relatedClassRefs:key==="notes"||key==="guide"?lessonRefs:[],relatedWorkRefs:key==="notes"?[]:key==="guide"||key==="solution"?works[2]?[works[2].ref]:works[0]?[works[0].ref]:[]:works[0]?[works[0].ref]:[],audiences
   }));
   if(valid){
     materials.push({ref:ref("MATERIAL",`${contextId}:material-link`),materialId:`${contextId}:material-link`,title:"Пример внешнего ресурса",kind:"LINK",publicHttpsUrl:"https://example.org/",...context,audiences});

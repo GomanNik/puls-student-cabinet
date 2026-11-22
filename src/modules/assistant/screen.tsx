@@ -52,7 +52,7 @@ function AssistantAnswerView({ answer }: { answer: AssistantAnswer }) {
         <dt>Провайдер</dt><dd>{answer.diagnostics.provider}</dd>
         <dt>Модель</dt><dd>{answer.diagnostics.model ?? "Не вызывалась"}</dd>
         <dt>Тип вопроса</dt><dd>{answer.diagnostics.topic}</dd>
-        <dt>Контекст модели</dt><dd>{answer.diagnostics.contextSent ? "Передан" : "Не передавался"}</dd>
+        <dt>Учебные факты модели</dt><dd>{answer.diagnostics.contextSent ? "Переданы" : "Не передавались"}</dd>
         <dt>Источники</dt><dd>{answer.diagnostics.sources.map(source => `${source.name}: ${source.state}, ${source.count}`).join("; ") || "Не запрашивались"}</dd>
         <dt>Время ответа</dt><dd>{answer.diagnostics.elapsedMs} мс</dd>
         {answer.diagnostics.fallback && <><dt>Проверка ответа</dt><dd>{answer.diagnostics.fallback}</dd></>}
@@ -73,7 +73,7 @@ function AssistantMessage({ message, onRetry }: { message: Extract<AssistantChat
   return (
     <article className="assistant-chat-row assistant-chat-row-bot" aria-label="Ответ помощника">
       <div className="assistant-bubble assistant-bubble-bot">
-        <div className="assistant-message-meta"><strong>ПУЛЬС</strong>{answer?.providerMode === "GIGACHAT" && <span>GigaChat</span>}{answer?.providerMode === "DEMO_MOCK" && <span>Демонстрационный ответ</span>}<time dateTime={new Date(message.createdAt).toISOString()}>{messageTime(message.createdAt)}</time></div>
+        <div className="assistant-message-meta"><strong>ПУЛЬС</strong>{answer?.providerMode === "GIGACHAT" && <span>GigaChat</span>}{answer?.providerMode === "DEMO_MOCK" && <span>{answer.notice?.startsWith("База знаний ПУЛЬС:") ? "База знаний ПУЛЬС" : "Демонстрационный ответ"}</span>}<time dateTime={new Date(message.createdAt).toISOString()}>{messageTime(message.createdAt)}</time></div>
         {message.status === "pending" && (
           <div className="assistant-pending" role="status" aria-label="Помощник готовит ответ"><LoaderCircle size={17} className="assistant-spinner" /></div>
         )}

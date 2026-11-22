@@ -56,10 +56,12 @@ describe("серверный адаптер GigaChat без обращения �
     vi.stubGlobal("fetch", fetcher);
     vi.stubEnv("GIGACHAT_AUTHORIZATION_KEY", "");
     await expect((await provider()).select("Когда срок?", facts)).rejects.toThrow("Provider not configured");
+    await expect((await provider()).select("Когда срок?", facts)).rejects.toMatchObject({ kind: "AUTH" });
     expect(fetcher).not.toHaveBeenCalled();
     vi.stubEnv("GIGACHAT_AUTHORIZATION_KEY", "test-only-credential");
     vi.stubEnv("GIGACHAT_SCOPE", "FOREIGN_SCOPE");
     await expect((await provider()).select("Когда срок?", facts)).rejects.toThrow("Invalid provider configuration");
+    await expect((await provider()).select("Когда срок?", facts)).rejects.toMatchObject({ kind: "UNAVAILABLE" });
     expect(fetcher).not.toHaveBeenCalled();
   });
 
