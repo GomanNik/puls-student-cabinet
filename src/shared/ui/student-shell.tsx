@@ -66,8 +66,9 @@ function HeaderBreadcrumbs({ pathname }: { pathname: string }) {
 function NotificationBell() {
   const { state } = useRemote("/notifications?unreadOnly=true&limit=100", NotificationListResponseSchema, true);
   const count = state.kind === "ready" ? state.value.data.items.length : 0;
-  return <Link className="header-notifications" href="/notifications" aria-label={count ? `Уведомления, непрочитанных: ${count}` : "Уведомления"} prefetch={false}>
-    <Bell size={20} aria-hidden="true" />{count > 0 && <span className="header-notification-count" aria-hidden="true">{count > 99 ? "99+" : count}</span>}
+  const complete = state.kind === "ready" && state.value.meta.completeness === true;
+  return <Link className="header-notifications" href="/notifications" aria-label={state.kind === "error" ? "Уведомления: сведения временно недоступны" : count ? complete ? `Уведомления, непрочитанных: ${count}` : `Уведомления, показано непрочитанных: ${count}; часть источников недоступна` : "Уведомления"} prefetch={false}>
+    <Bell size={20} aria-hidden="true" />{count > 0 && <span className="header-notification-count" aria-hidden="true">{count > 99 ? "99+" : complete ? count : `${count}+`}</span>}
   </Link>;
 }
 export function StudentShell({ children }: { children: React.ReactNode }) {

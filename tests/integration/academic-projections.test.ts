@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { AuthService } from "@/modules/auth/service";
 import type { AuthContext } from "@/modules/auth/context";
 import { learningService } from "@/modules/learning/composition";
+import { learningHandler } from "@/modules/learning/handlers";
+import { sessionCookie } from "@/shared/server/http";
 import { attendanceSummary } from "@/modules/learning/discipline-content";
+import { getWorkStatus } from "@/modules/learning/work-status";
 import { CommunityService } from "@/modules/community/service";
 import { readConfig } from "@/shared/server/config";
 import { database } from "@/shared/server/db";
@@ -11,10 +14,11 @@ import { addDays } from "@/shared/lib/dates";
 import { prepareTestDatabase, testDatabase } from "../support/database";
 
 const admin = testDatabase();
-let a: AuthContext, b: AuthContext;
+let a: AuthContext, b: AuthContext, tokenA: string;
 beforeAll(async () => {
   const fixture = await prepareTestDatabase(admin), service = new AuthService(database(), readConfig());
   const sessions = await Promise.all([service.login("demo-a", fixture.passwords[0], "127.0.0.1"), service.login("demo-b", fixture.passwords[1], "127.0.0.1")]);
+  tokenA = sessions[0].token;
   [a, b] = await Promise.all(sessions.map(session => service.requireSession(session.token, randomUUID())));
 });
 afterAll(async () => { await admin.$disconnect(); await database().$disconnect(); });
@@ -46,11 +50,16 @@ describe("официальные учебные проекции и частич
       let cursor: string | undefined;
       do {
         const page = await service.schedule.list(range, 20, cursor);
+        if (cursor) {
+          const repeated = await service.schedule.list(range, 20, cursor);
+          expect(repeated.data.items.map(item => item.scheduleId)).toEqual(page.data.items.map(item => item.scheduleId));
+        }
         items.push(...page.data.items);
         cursor = page.data.nextCursor ?? undefined;
       } while (cursor);
       expect(items.map(item => item.scheduleId)).toEqual(expected.data.items.map(item => item.scheduleId));
       expect(new Set(items.map(item => item.scheduleId)).size).toBe(items.length);
+      expect(items.map(item => item.plannedStart)).toEqual([...items.map(item => item.plannedStart)].sort());
       if (auth === a) expect(items.length).toBeGreaterThan(20);
     }
   });
@@ -70,6 +79,19 @@ describe("официальные учебные проекции и частич
       expect(present + absent + other + withoutMark).toBe(16);
       expect(attendanceSummary(page.data)).toContain(`16. Присутствий: ${present}; пропусков: ${absent}; иных отметок: ${other}; без отметки: ${withoutMark}`);
     }
+  });
+
+  it("отмена остаётся в расписании с признаком, перенос сохраняет один актуальный экземпляр", async () => {
+    const service = await learningService(a, admin);
+    const list = await service.schedule.list({ from: "2026-11-13", to: "2026-11-16" }, 100);
+    const cancelled = list.data.items.filter(item => item.status === "CANCELLED");
+    const moved = list.data.items.filter(item => item.status === "RESCHEDULED");
+    expect(cancelled.length).toBeGreaterThan(0);
+    expect(cancelled.every(item => item.change?.changeKind === "CANCELLED")).toBe(true);
+    expect(moved.length).toBeGreaterThan(0);
+    expect(moved.every(item => item.change?.changeKind === "RESCHEDULED" && item.plannedStart?.includes("T16:40:00+06:00"))).toBe(true);
+    expect(new Set(list.data.items.map(item => item.scheduleId)).size).toBe(list.data.items.length);
+    expect(list.data.items.map(item => item.plannedStart)).toEqual([...list.data.items.map(item => item.plannedStart)].sort());
   });
 
   it.each(["missing-assignment", "conflicting-assignment"])("%s не показывает чужую подгруппу как личную", async name => {
@@ -181,4 +203,128 @@ describe("официальные учебные проекции и частич
     await expect(ownA.service.bind(ownB.periodId, ownB.binding.publicContext, "OFFERING")).rejects.toMatchObject({ status: 404 });
     await expect(ownA.service.bind(ownA.periodId, ownB.binding.publicContext, "OFFERING")).rejects.toMatchObject({ status: 404 });
   });
+
+  it("показывает опубликованный результат работы как итоговый статус, включая ноль баллов", async () => {
+    const { service, binding } = await subject(a, "Математический анализ");
+    const list = await service.listWorks(binding, 100, undefined, { filter: "ALL", sort: "DUE", query: "" });
+    const lab3 = list.data.items.find(item => item.title === "Лабораторная работа № 3")!;
+
+    expect(lab3.publishedResult?.value.rawValueText).toBe("0 баллов");
+    expect(getWorkStatus(lab3.progress, lab3.publishedResult)).toBe("RESULT_PUBLISHED");
+    expect(getWorkStatus({ ...lab3.progress!, reviewedAt: undefined, reviewStatusCode: undefined }, lab3.publishedResult)).toBe("RESULT_PUBLISHED");
+
+    const detail = await service.workDetail(binding, lab3.workId);
+    expect(detail.data.work.publishedResult?.value.rawValueText).toBe("0 баллов");
+    expect(detail.data.results.some(result => result.value.rawValueText === "0 баллов")).toBe(true);
+
+    const review = await service.listWorks(binding, 100, undefined, { filter: "REVIEW", sort: "DUE", query: "" });
+    expect(review.data.items).toHaveLength(1);
+    expect(review.data.items.some(item => item.workId === lab3.workId)).toBe(false);
+  });
+
+
+
+  it("API списка результатов принимает фильтр RESULT и возвращает опубликованную работу", async () => {
+    const { binding, periodId } = await subject(a, "Математический анализ");
+    const request = new Request(`https://puls.test/api/v1/periods/${periodId}/offerings/${binding.publicContext}/works?limit=20&filter=RESULT`, {
+      headers: {
+        cookie: `${sessionCookie}=${tokenA}`,
+        "x-puls-proxy-key": readConfig().TRUSTED_PROXY_KEY,
+        "x-forwarded-proto": "https",
+        "x-puls-client-ip": "127.0.0.1",
+      },
+    });
+    const response = await learningHandler("works", Promise.resolve({ periodId, offeringId: binding.publicContext }))(request);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.items).toHaveLength(1);
+    expect(body.data.items[0].title).toBe("Лабораторная работа № 3");
+  });
+
+  it("каталог материалов показывает только файлы, привязанные к конкретному занятию", async () => {
+    const { binding, periodId } = await subject(a, "Математический анализ");
+    const query = new URLSearchParams({ periodId, offeringId: binding.publicContext, limit: "20" });
+    const request = new Request(`https://puls.test/api/v1/materials?${query}`, {
+      headers: {
+        cookie: `${sessionCookie}=${tokenA}`,
+        "x-puls-proxy-key": readConfig().TRUSTED_PROXY_KEY,
+        "x-forwarded-proto": "https",
+        "x-puls-client-ip": "127.0.0.1",
+      },
+    });
+    const response = await learningHandler("materials")(request);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.items.length).toBeGreaterThan(0);
+    expect(body.data.items.every((item: { relatedScheduleIds?: string[] }) => (item.relatedScheduleIds?.length ?? 0) > 0)).toBe(true);
+    expect(body.data.items.some((item: { title: string }) => item.title === "Конспект.pdf")).toBe(true);
+  });
+
+  it("работы открываются постранично с номерами страниц и возвратом назад", async () => {
+    const { service, binding } = await subject(a, "Математический анализ");
+    const selection = { filter: "ALL" as const, sort: "DUE" as const, query: "" };
+    const first = await service.listWorks(binding, 20, undefined, selection);
+    expect(first.data).toMatchObject({ totalItems: 26, totalPages: 2, pageNumber: 1, previousCursor: null });
+    expect(first.data.nextCursor).toBeTruthy();
+
+    const second = await service.listWorks(binding, 20, first.data.nextCursor ?? undefined, selection);
+    expect(second.data).toMatchObject({ totalItems: 26, totalPages: 2, pageNumber: 2, nextCursor: null });
+    expect(second.data.previousCursor).toBeTruthy();
+    expect(second.data.items).toHaveLength(6);
+    const backToFirst = await service.listWorks(binding, 20, second.data.previousCursor ?? undefined, selection);
+    expect(backToFirst.data.pageNumber).toBe(1);
+    expect(backToFirst.data.items.map(item => item.workId)).toEqual(first.data.items.map(item => item.workId));
+  });
+
+  it("прикрепляет конспект к конкретной лекции, а не оставляет его без учебного контекста", async () => {
+    const { service, binding, periodId } = await subject(a, "Математический анализ");
+    const materials = await service.allMaterials({ periodId, offeringId: binding.publicContext });
+    const note = materials.items.find(item => item.title === "Конспект.pdf");
+    expect(note?.relatedScheduleIds).toHaveLength(1);
+    const lesson = await service.schedule.detail(note!.relatedScheduleIds![0]);
+    expect(lesson.data.schedule.offeringId).toBe(binding.publicContext);
+    expect(lesson.data.schedule.lessonType).toBe("Лекция");
+  });
+
+  it("материалы содержат сведения о связанных занятиях", async () => {
+    const { service, binding } = await subject(a, "История России");
+    const result = await service.materials(binding);
+    const material = result.items.find(item => item.relatedLessons?.length);
+    expect(material).toBeDefined();
+
+    const lesson = material!.relatedLessons![0]!;
+    const detail = await service.schedule.detail(lesson.scheduleId);
+    expect(lesson.disciplineTitle).toBe(binding.title);
+    expect(lesson.plannedStart).toBe(detail.data.schedule.plannedStart);
+    expect(lesson.timeZone).toBe(detail.data.schedule.timeZone);
+    expect(lesson.topic).toBe(detail.data.actual?.topic);
+    expect(material!.relatedScheduleIds).toContain(lesson.scheduleId);
+  });
+
+  it("считает все работы дисциплины, а не только карточки первой страницы", async () => {
+    const { service, binding } = await subject(a, "Математический анализ");
+    const detail = await service.offeringDetail(binding);
+
+    expect(detail.data.works).toHaveLength(20);
+    expect(detail.data.worksState.nextCursor).toBeTruthy();
+    expect(detail.data.workCounts).toEqual({ total: 26, reviewed: 1, awaitingReview: 1 });
+  });
+
+  it("не показывает приблизительные количества при неполном списке работ", async () => {
+    await scenario("partial-works", async () => {
+      const { service, binding } = await subject(a, "Математический анализ");
+      const detail = await service.offeringDetail(binding);
+      expect(detail.data.workCounts).toEqual({ total: null, reviewed: null, awaitingReview: null });
+    });
+  });
+
+  it("возвращает опубликованные результаты через фильтр списка работ", async () => {
+    const { service, binding } = await subject(a, "Математический анализ");
+    const results = await service.listWorks(binding, 20, undefined, { filter: "RESULT", sort: "DUE", query: "" });
+
+    expect(results.data.items).toHaveLength(1);
+    expect(results.data.items[0].title).toBe("Лабораторная работа № 3");
+    expect(results.data.items[0].publishedResult?.value.rawValueText).toBe("0 баллов");
+  });
+
 });

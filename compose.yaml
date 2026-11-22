@@ -16,6 +16,7 @@ services:
       timeout: 3s
       retries: 15
     networks: [private]
+    restart: unless-stopped
   migrate:
     build: { context: ., target: migrate }
     environment:
@@ -32,7 +33,7 @@ services:
       TRUSTED_PROXY_KEY: ${TRUSTED_PROXY_KEY:?Укажите отдельный случайный секрет}
       PULS_FIXTURE_SCENARIO: ${PULS_FIXTURE_SCENARIO:-normal}
       PULS_COMMUNITY_FIXTURE_SCENARIO: ${PULS_COMMUNITY_FIXTURE_SCENARIO:-normal}
-      PULS_AI_PROVIDER: ${PULS_AI_PROVIDER:-DEMO_MOCK}
+      PULS_AI_PROVIDER: ${PULS_AI_PROVIDER:-GIGACHAT}
       PULS_AI_FIXTURE_SCENARIO: ${PULS_AI_FIXTURE_SCENARIO:-normal}
       GIGACHAT_AUTHORIZATION_KEY: ${GIGACHAT_AUTHORIZATION_KEY:-}
       GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}

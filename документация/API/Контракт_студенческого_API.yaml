@@ -296,6 +296,49 @@ paths:
         - СЦ-06
         - СЦ-19
       x-read-only-academic-data: true
+  /periods/{periodId}/grades:
+    get:
+      tags:
+        - Учебная деятельность
+      operationId: getPeriodGradeReport
+      summary: Официальная ведомость оценок одного разрешённого учебного периода
+      description: Возвращает только дисциплины текущего студента. Пустой подтверждённый
+        набор отличен от неполных или недоступных сведений. Для чужого или
+        неизвестного периода возвращается одинаковый 404.
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+      responses:
+        '200':
+          description: Ведомость периода
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradeReportResponse'
+          headers:
+            Cache-Control:
+              description: Персональные и учебные ответы не кэшировать
+              schema:
+                type: string
+                const: private, no-store
+            Vary:
+              description: Изоляция по сессии
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+      x-trace-scenarios:
+        - СЦ-06
+      x-read-only-academic-data: true
   /periods/{periodId}/offerings:
     get:
       tags:
@@ -3461,6 +3504,18 @@ components:
       required:
         - resultId
         - value
+    PublishedWorkResult:
+      type: object
+      description: Последний опубликованный результат по учебной работе.
+      properties:
+        value:
+          $ref: '#/components/schemas/AssessmentValue'
+        assessedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+        - value
     WorkSummary:
       type: object
       properties:
@@ -3496,6 +3551,11 @@ components:
           $ref: '#/components/schemas/AcademicDate'
         progress:
           $ref: '#/components/schemas/WorkProgress'
+        publishedResult:
+          description: null означает подтверждённое отсутствие результата; отсутствие поля означает, что источник не позволил определить его наличие.
+          oneOf:
+            - $ref: '#/components/schemas/PublishedWorkResult'
+            - type: 'null'
         target:
           $ref: '#/components/schemas/Target'
       additionalProperties: false
@@ -3720,6 +3780,24 @@ components:
         - eventKind
         - title
         - target
+    WorkCounts:
+      type: object
+      description: Сводные показатели по полному списку работ; null означает, что число нельзя подтвердить.
+      properties:
+        total:
+          description: Общее количество работ во всей дисциплине.
+          type: [integer, 'null']
+          minimum: 0
+        reviewed:
+          description: Количество проверенных работ, включая работы с опубликованным результатом.
+          type: [integer, 'null']
+          minimum: 0
+        awaitingReview:
+          description: Количество отправленных работ без опубликованного результата.
+          type: [integer, 'null']
+          minimum: 0
+      additionalProperties: false
+      required: [total, reviewed, awaitingReview]
     OfferingDetail:
       type: object
       properties:
@@ -3737,6 +3815,9 @@ components:
             $ref: '#/components/schemas/WorkSummary'
         worksState:
           $ref: '#/components/schemas/ListStatus'
+        workCounts:
+          description: Точные показатели по всем работам дисциплины, а не только по первой странице.
+          $ref: '#/components/schemas/WorkCounts'
         results:
           $ref: '#/components/schemas/ResultsView'
         materials:
@@ -3857,6 +3938,34 @@ components:
             description: Непрозрачный идентификатор, не доказывает право доступа
             maxLength: 240
             minLength: 1
+        relatedLessons:
+          type: array
+          description: Проверенные сведения о связанных занятиях
+          items:
+            type: object
+            properties:
+              scheduleId:
+                type: string
+                minLength: 1
+                maxLength: 240
+              disciplineTitle:
+                type: string
+                minLength: 1
+              plannedStart:
+                type: string
+                format: date-time
+              timeZone:
+                type: string
+                minLength: 1
+                maxLength: 100
+              topic:
+                type: string
+            required:
+              - scheduleId
+              - disciplineTitle
+              - plannedStart
+              - timeZone
+            additionalProperties: false
         safeExternalUrl:
           type: string
           format: uri
@@ -4830,6 +4939,8 @@ components:
           maxItems: 10
         notice:
           type: string
+        diagnostics:
+          $ref: '#/components/schemas/AssistantDiagnostics'
       additionalProperties: false
       required:
         - text
@@ -4837,6 +4948,81 @@ components:
         - completeness
         - targets
       description: Нет изменяющих команд и постоянного чата.
+    AssistantDiagnostics:
+      type: object
+      description: Выдаётся только в локальном режиме разработки при включённой диагностике.
+      properties:
+        topic:
+          type: string
+        provider:
+          type: string
+          enum: [GIGACHAT, DEMO_MOCK]
+        model:
+          type: [string, 'null']
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              name: {type: string}
+              state: {type: string, enum: [FOUND, EMPTY, PARTIAL, UNAVAILABLE]}
+              count: {type: integer, minimum: 0}
+            required: [name, state, count]
+            additionalProperties: false
+        contextSent: {type: boolean}
+        elapsedMs: {type: integer, minimum: 0}
+        fallback:
+          type: [string, 'null']
+      required: [topic, provider, model, sources, contextSent, elapsedMs, fallback]
+      additionalProperties: false
+    GradeRow:
+      type: object
+      properties:
+        offeringId:
+          $ref: '#/components/schemas/Identifier'
+        title:
+          type: string
+          minLength: 1
+        controls:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        controlsState:
+          $ref: '#/components/schemas/DataState'
+        resultState:
+          $ref: '#/components/schemas/DataState'
+        value:
+          $ref: '#/components/schemas/AssessmentValue'
+        assessedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+        - offeringId
+        - title
+        - controls
+        - controlsState
+        - resultState
+    GradeReport:
+      type: object
+      properties:
+        periodId:
+          $ref: '#/components/schemas/Identifier'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GradeRow'
+        isComplete:
+          type: boolean
+        dataState:
+          $ref: '#/components/schemas/DataState'
+      additionalProperties: false
+      required:
+        - periodId
+        - items
+        - isComplete
+        - dataState
     PeriodPage:
       type: object
       properties:
@@ -4940,6 +5126,19 @@ components:
           type:
             - string
             - 'null'
+        previousCursor:
+          type:
+            - string
+            - 'null'
+        pageNumber:
+          type: integer
+          minimum: 1
+        totalPages:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          minimum: 0
         isComplete:
           type:
             - boolean
@@ -4950,6 +5149,10 @@ components:
       required:
         - items
         - nextCursor
+        - previousCursor
+        - pageNumber
+        - totalPages
+        - totalItems
         - isComplete
         - dataState
     SessionPage:
@@ -5209,6 +5412,17 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/DashboardView'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      additionalProperties: false
+      required:
+        - data
+        - meta
+    GradeReportResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/GradeReport'
         meta:
           $ref: '#/components/schemas/ResponseMeta'
       additionalProperties: false

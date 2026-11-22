@@ -46,7 +46,17 @@ function AssistantAnswerView({ answer }: { answer: AssistantAnswer }) {
       )}
 
       {answer.notice && <p className="assistant-answer-notice">{answer.notice}</p>}
-      {answer.completeness !== "COMPLETE" && <p className="assistant-incomplete">Часть источников недоступна. Отсутствие результата не подтверждает отсутствие сведений.</p>}
+      {answer.completeness === "PARTIAL" && <p className="assistant-incomplete">Доступна только часть запрошенных сведений.</p>}
+      {answer.completeness === "UNKNOWN" && answer.targets.length > 0 && <p className="assistant-incomplete">Полнота сведений не подтверждена.</p>}
+      {answer.diagnostics && <details className="assistant-diagnostics"><summary>Диагностика тестового чата</summary><dl>
+        <dt>Провайдер</dt><dd>{answer.diagnostics.provider}</dd>
+        <dt>Модель</dt><dd>{answer.diagnostics.model ?? "Не вызывалась"}</dd>
+        <dt>Тип вопроса</dt><dd>{answer.diagnostics.topic}</dd>
+        <dt>Учебные факты модели</dt><dd>{answer.diagnostics.contextSent ? "Переданы" : "Не передавались"}</dd>
+        <dt>Источники</dt><dd>{answer.diagnostics.sources.map(source => `${source.name}: ${source.state}, ${source.count}`).join("; ") || "Не запрашивались"}</dd>
+        <dt>Время ответа</dt><dd>{answer.diagnostics.elapsedMs} мс</dd>
+        {answer.diagnostics.fallback && <><dt>Проверка ответа</dt><dd>{answer.diagnostics.fallback}</dd></>}
+      </dl></details>}
     </div>
   );
 }
@@ -63,7 +73,7 @@ function AssistantMessage({ message, onRetry }: { message: Extract<AssistantChat
   return (
     <article className="assistant-chat-row assistant-chat-row-bot" aria-label="Ответ помощника">
       <div className="assistant-bubble assistant-bubble-bot">
-        <div className="assistant-message-meta"><strong>ПУЛЬС</strong>{answer?.providerMode === "GIGACHAT" && <span>GigaChat</span>}{answer?.providerMode === "DEMO_MOCK" && <span>Демонстрационный ответ</span>}<time dateTime={new Date(message.createdAt).toISOString()}>{messageTime(message.createdAt)}</time></div>
+        <div className="assistant-message-meta"><strong>ПУЛЬС</strong>{answer?.providerMode === "GIGACHAT" && <span>GigaChat</span>}{answer?.providerMode === "DEMO_MOCK" && <span>{answer.notice?.startsWith("База знаний ПУЛЬС:") ? "База знаний ПУЛЬС" : "Демонстрационный ответ"}</span>}<time dateTime={new Date(message.createdAt).toISOString()}>{messageTime(message.createdAt)}</time></div>
         {message.status === "pending" && (
           <div className="assistant-pending" role="status" aria-label="Помощник готовит ответ"><LoaderCircle size={17} className="assistant-spinner" /></div>
         )}

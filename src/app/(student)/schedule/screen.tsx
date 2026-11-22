@@ -21,12 +21,13 @@ const normalize = (value: string) => value.trim().toLocaleLowerCase("ru-RU");
 function Lesson({ entry, href }: { entry: ScheduleEntry; href: string }) {
   const start = entry.plannedStart && entry.timeZone ? formatTime(entry.plannedStart, entry.timeZone) : "—";
   const end = entry.plannedEnd && entry.timeZone ? formatTime(entry.plannedEnd, entry.timeZone) : "Время не указано";
-  return <Link id={`lesson-${entry.scheduleId}`} className="agenda-lesson" href={href} prefetch={false}>
+  return <Link id={`lesson-${entry.scheduleId}`} className={`agenda-lesson${entry.status === "CANCELLED" ? " agenda-lesson-cancelled" : ""}`} href={href} prefetch={false}>
     <span className="agenda-lesson-time"><strong>{start}</strong><small>{end}</small></span>
     <span className="agenda-lesson-copy"><strong>{entry.title}</strong><span className="agenda-lesson-tags">
       <i>{entry.lessonType ?? "Тип не указан"}</i>
       <i>{entry.subgroupLabel ?? "Вся группа"}</i>
       {entry.status === "RESCHEDULED" && <i>Перенесено</i>}
+      {entry.status === "CANCELLED" && <i>Отменено</i>}
     </span></span>
     <span className="agenda-lesson-meta"><strong>{entry.room ? `Ауд. ${entry.room}` : "Аудитория не указана"}</strong><span>{entry.teacherLabel ?? "Преподаватель не указан"}</span></span>
     <ChevronRight className="agenda-lesson-arrow" size={17} aria-hidden="true" />
@@ -46,14 +47,14 @@ function ScheduleData({ from, to, today, navigate, open }: { from: string; to: s
   const selection = currentSelection(mode, selected, ownGroup, group);
 
   const schedule = state.kind === "ready" ? state.value : null;
-  const active = schedule?.data.items.filter(item => item.status !== "CANCELLED") ?? [];
-  const teachers = [...new Set(active.map(item => item.teacherLabel).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, "ru"));
-  const rooms = [...new Set(active.map(item => item.room).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, "ru"));
+  const lessons = schedule?.data.items ?? [];
+  const teachers = [...new Set(lessons.map(item => item.teacherLabel).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, "ru"));
+  const rooms = [...new Set(lessons.map(item => item.room).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, "ru"));
   const labels = { group: "Группа", teacher: "Преподаватель", room: "Аудитория" };
   const choices = mode === "group" ? (group ? [group] : []) : mode === "teacher" ? teachers : rooms;
   const search = normalize(query);
   const suggestions = choices.filter(value => normalize(value).includes(search)).slice(0, 8);
-  const filtered = selection ? active.filter(item => selection.mode === "group" ? selection.value === group : selection.mode === "teacher" ? item.teacherLabel === selection.value : item.room === selection.value) : [];
+  const filtered = selection ? lessons.filter(item => selection.mode === "group" ? selection.value === group : selection.mode === "teacher" ? item.teacherLabel === selection.value : item.room === selection.value) : [];
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
   const reset = () => { setQuery(""); setSelected(null); setOwnGroup(false); setSuggestionsOpen(false); };
   const returnToGroup = () => { setMode("group"); setQuery(""); setSelected(null); setOwnGroup(true); setSuggestionsOpen(false); };
@@ -70,7 +71,7 @@ function ScheduleData({ from, to, today, navigate, open }: { from: string; to: s
     {state.kind === "error" ? <RemoteState state={state} retry={reload} /> : profileState.kind !== "ready" ? <RemoteState state={profileState} retry={reloadProfile} /> : !selection ? <section className="agenda-empty-selection" aria-label="Расписание не выбрано"><span className="agenda-empty-icon" aria-hidden="true"><CalendarSearch size={112} strokeWidth={1.35} /></span><h2>Выберите группу, преподавателя или аудиторию</h2><p>Расписание появится после выбора параметра</p>{group && <button type="button" className="button button-secondary" onClick={returnToGroup}>Вернуться к расписанию своей группы</button>}</section> : state.kind === "loading" ? <RemoteState state={state} retry={reload} /> : <>
       {schedule?.meta.sourceStatus === "PARTIAL" && <div className="notice notice-warning" role="status"><strong>Показаны подтверждённые сведения</strong><p>{schedule.meta.partialErrors?.some(e => e.dataset === "CONTEXT") ? "Не удалось однозначно определить официальную подгруппу для части дисциплин. Для них показаны только занятия всей группы." : "Часть сведений или история изменений недоступна. Пустой список не подтверждает отсутствие занятий."}</p></div>}
       <p className="agenda-context" role="status"><CalendarSearch size={20} aria-hidden="true" /><strong>{scheduleContextLabel(selection)}</strong></p>
-      <section className="agenda-panel" aria-labelledby="agenda-title"><header className="agenda-panel-head"><div><span className="page-hero-eyebrow">НЕДЕЛЬНЫЙ ПЛАН</span><h2 id="agenda-title">Занятия недели</h2></div><span className="agenda-count">{filtered.length} занятий</span></header>
+      <section className="agenda-panel" aria-labelledby="agenda-title"><header className="agenda-panel-head"><div><span className="page-hero-eyebrow">НЕДЕЛЬНЫЙ ПЛАН</span><h2 id="agenda-title">Занятия недели</h2></div><span className="agenda-count">{schedule?.data.isComplete ? `${filtered.filter(item => item.status !== "CANCELLED").length} занятий` : `Показано ${filtered.filter(item => item.status !== "CANCELLED").length} занятий`}{filtered.some(item => item.status === "CANCELLED") && `, отменено ${filtered.filter(item => item.status === "CANCELLED").length}`}</span></header>
         {days.map(day => {
           const items = filtered.filter(item => item.plannedStart && item.timeZone && localDay(item.plannedStart, item.timeZone) === day);
           return <section key={day} id={`day-${day}`} className="agenda-day" aria-labelledby={`day-title-${day}`}><header className="agenda-day-head"><span className="agenda-day-badge">{new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", weekday: "short" }).format(new Date(`${day}T12:00:00Z`)).toUpperCase()}</span><div><h3 id={`day-title-${day}`}>{dayName(day)}</h3><small>{compactDate(day)}</small></div></header><div className="agenda-day-items">{items.length ? items.map(item => <Lesson key={item.scheduleId} entry={item} href={open(item.scheduleId)} />) : <p className="agenda-empty-day">{schedule?.data.isComplete ? "В этот день занятий нет" : "Нет подтверждённых занятий; сведения могут быть неполными"}</p>}</div></section>;

@@ -122,7 +122,7 @@
 | СЦ-23 | Хронология дат и единая проекция сроков | [I2](integration/academic-projections.test.ts), [U4](unit/calendar-export.test.ts), [E4](e2e/academic-journeys.spec.ts) | частично |
 | СЦ-24 | Неполная информация и запрет изменения официальных данных | [I2](integration/academic-projections.test.ts), [I3](integration/academic-operation-isolation.test.ts), [E6](e2e/student-api-negative.spec.ts) | частично |
 
-## 49 операций собственного API
+## 50 операций собственного API
 
 Все операции проверяются статическим инвентарём OpenAPI ↔ Route Handlers (`U3`). Приведённый E2E-тест вызывает соответствующий HTTP-маршрут; матрица не означает проверки всех ошибок каждой операции.
 
@@ -134,6 +134,7 @@
 | `GET /profile` | `getMyProfile` | [E2](e2e/profile-resilience.spec.ts), [E5](e2e/student-api.spec.ts), [U3](unit/api-contract-inventory.test.ts) |
 | `GET /dashboard` | `getDashboard` | [E5](e2e/student-api.spec.ts), [U3](unit/api-contract-inventory.test.ts) |
 | `GET /periods` | `listPeriods` | [E5](e2e/student-api.spec.ts), [U3](unit/api-contract-inventory.test.ts) |
+| `GET /periods/{periodId}/grades` | `getPeriodGradeReport` | [I8](integration/grade-report.test.ts), [U3](unit/api-contract-inventory.test.ts) |
 | `GET /periods/{periodId}/offerings` | `listOfferings` | [E5](e2e/student-api.spec.ts), [U3](unit/api-contract-inventory.test.ts) |
 | `GET /periods/{periodId}/academic-units` | `listAcademicUnits` | [E5](e2e/student-api.spec.ts), [U3](unit/api-contract-inventory.test.ts) |
 | `GET /periods/{periodId}/academic-units/{unitId}` | `getAcademicUnit` | [E5](e2e/student-api.spec.ts), [U3](unit/api-contract-inventory.test.ts) |

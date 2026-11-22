@@ -109,9 +109,10 @@ export class RemoteCache {
           let dataComplete = page.data.isComplete;
           while (page.data.nextCursor) {
             const cursor = page.data.nextCursor;
-            if (cursors.has(cursor) || items.length > 5000) throw new ApiError(502, "INTERNAL_ERROR");
+            if (cursors.has(cursor) || cursors.size >= 250 || items.length > 5000) throw new ApiError(502, "INTERNAL_ERROR");
             cursors.add(cursor);
             page = await this.read(`${entry.path}${entry.path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}`, entry.schema, controller.signal) as Page;
+            if (page.data.items.length === 0 && page.data.nextCursor) throw new ApiError(502, "INTERNAL_ERROR");
             items.push(...page.data.items);
             complete &&= page.meta.completeness === true;
             if (dataComplete === false || page.data.isComplete === false) dataComplete = false;

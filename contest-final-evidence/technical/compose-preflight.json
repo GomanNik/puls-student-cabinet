@@ -1,0 +1,55 @@
+{
+  "checked_at": "2026-11-19T00:59:34.086741+06:00",
+  "base_commit": "de1fb526b0fed1cb5a8d3c6f2e5b312417ce3032",
+  "configuration_modified": true,
+  "validation": "docker compose config --format json",
+  "uses_production_secrets": false,
+  "services": {
+    "caddy": {
+      "restart": "unless-stopped",
+      "published_ports": [
+        "80",
+        "443"
+      ],
+      "networks": [
+        "private",
+        "public"
+      ]
+    },
+    "db": {
+      "restart": "unless-stopped",
+      "published_ports": [],
+      "networks": [
+        "private"
+      ]
+    },
+    "migrate": {
+      "restart": "no",
+      "published_ports": [],
+      "networks": [
+        "private"
+      ]
+    },
+    "web": {
+      "restart": "unless-stopped",
+      "published_ports": [],
+      "networks": [
+        "private",
+        "public"
+      ]
+    },
+    "worker": {
+      "restart": "unless-stopped",
+      "published_ports": [],
+      "networks": [
+        "private"
+      ]
+    }
+  },
+  "volumes": [
+    "caddy_config",
+    "caddy_data",
+    "database"
+  ],
+  "runtime_tested": false
+}

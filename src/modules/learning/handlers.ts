@@ -20,7 +20,8 @@ export function learningHandler(operation: Operation, params: Promise<Record<str
     if (operation === "materials") {
       const f = query(request, z.strictObject({ ...pagingQuery, periodId: id.optional(), offeringId: id.optional(), unitId: id.optional() }));
       const result = await service.allMaterials(f);
-      return { data: { ...pageSlice(result.items, auth.accountId, ["materials", f.periodId ?? null, f.offeringId ?? null, f.unitId ?? null, f.limit], service.context.revision, f.limit, f.cursor), isComplete: result.meta.completeness ?? null, dataState: result.items.length ? "READY" : result.meta.completeness ? "EMPTY_CONFIRMED" : "SOURCE_ERROR" }, meta: result.meta };
+      const lessonMaterials = result.items.filter(item => (item.relatedScheduleIds?.length ?? 0) > 0);
+      return { data: { ...pageSlice(lessonMaterials, auth.accountId, ["materials", f.periodId ?? null, f.offeringId ?? null, f.unitId ?? null, f.limit], service.context.revision, f.limit, f.cursor), isComplete: result.meta.completeness ?? null, dataState: lessonMaterials.length ? "READY" : result.meta.completeness ? "EMPTY_CONFIRMED" : "SOURCE_ERROR" }, meta: result.meta };
     }
     if (operation === "units") {
       const f = query(request, z.strictObject(pagingQuery)), result = await service.units(path.periodId);
@@ -31,8 +32,16 @@ export function learningHandler(operation: Operation, params: Promise<Record<str
     if (operation === "offering" || operation === "unit") { query(request, emptyQuery); return unit ? service.unitDetail(binding) : service.offeringDetail(binding); }
     if (operation === "work" || operation === "unitWork") { const f = query(request, z.strictObject({ stageRef: id.optional() })); return service.workDetail(binding, path.workId, f.stageRef); }
     if (operation === "results") { query(request, emptyQuery); const { data, meta } = await service.results(binding); return { data, meta }; }
+    if (operation === "works" || operation === "unitWorks") {
+      const f = query(request, z.strictObject({
+        ...pagingQuery,
+        filter: z.enum(["ALL", "DUE", "RESULT", "REVIEW"]).default("ALL"),
+        sort: z.enum(["DUE", "ISSUED", "TITLE"]).default("DUE"),
+        q: z.string().max(120).default(""),
+      }));
+      return service.listWorks(binding, f.limit, f.cursor, { filter: f.filter, sort: f.sort, query: f.q });
+    }
     const f = query(request, z.strictObject(pagingQuery));
-    if (operation === "works" || operation === "unitWorks") return service.listWorks(binding, f.limit, f.cursor);
     if (operation === "attestations") {
       const result = await service.results(binding), state = result.data.attestationsState;
       return { data: { ...pageSlice(result.data.attestations, auth.accountId, ["attestations", path.periodId, path.offeringId, f.limit], service.context.revision, f.limit, f.cursor), dataState: state.dataState, isComplete: state.isComplete }, meta: result.meta };
